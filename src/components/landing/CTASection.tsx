@@ -40,7 +40,7 @@ export default function CTASection() {
               </Button>
               <Button
                 size="lg"
-                variant="outline"
+                variant="secondary"
                 onClick={() => navigate("/find-blood")}
                 className="border-secondary-foreground/20 text-secondary-foreground hover:bg-secondary-foreground/10 gap-2"
               >
