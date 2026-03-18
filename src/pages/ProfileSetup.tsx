@@ -8,10 +8,12 @@ import { BLOOD_GROUPS } from "@/lib/bloodCompatibility";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "@/components/Navbar";
-import { Heart, CheckCircle2, ArrowLeft, Eye } from "lucide-react";
+import { Heart, CircleCheck as CheckCircle2, ArrowLeft, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { doc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+
+const ADMIN_EMAILS = ["kumarvinay072007@gmail.com", "admin@bloodline.app"];
 
 export default function ProfileSetup() {
   const { user, updateProfile } = useAuth();
@@ -35,6 +37,33 @@ export default function ProfileSetup() {
 
   const handlePreview = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!form.name.trim() || !form.phone.trim() || !form.city.trim() || !form.address.trim()) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
+    const phoneRegex = /^[+]?[(]?[0-9]{1,4}[)]?[-\s.]?[(]?[0-9]{1,4}[)]?[-\s.]?[0-9]{4,}$/;
+    if (!phoneRegex.test(form.phone)) {
+      toast.error("Please enter a valid phone number");
+      return;
+    }
+
+    if (form.role === "donor") {
+      if (form.age < 18 || form.age > 65) {
+        toast.error("Donor age must be between 18 and 65 years");
+        return;
+      }
+      if (form.weight < 45) {
+        toast.error("Donor weight must be at least 45 kg");
+        return;
+      }
+      if (!form.healthConfirmed) {
+        toast.error("Please confirm you are in good health to donate blood");
+        return;
+      }
+    }
+
     setStep("preview");
   };
 
@@ -42,39 +71,41 @@ export default function ProfileSetup() {
     if (!user) return;
     setLoading(true);
     try {
+      const finalRole = ADMIN_EMAILS.includes(user.email || "") ? "admin" : form.role;
+
       await updateProfile({
         uid: user.uid,
-        name: form.name,
+        name: form.name.trim(),
         email: user.email || "",
-        phone: form.phone,
+        phone: form.phone.trim(),
         bloodGroup: form.bloodGroup,
-        city: form.city,
-        address: form.address,
-        role: form.role,
+        city: form.city.trim(),
+        address: form.address.trim(),
+        role: finalRole,
         age: form.age,
         weight: form.weight,
         healthConfirmed: form.healthConfirmed,
         lastDonationDate: form.lastDonationDate || null,
-        donorAvailability: form.role === "donor",
+        donorAvailability: finalRole === "donor",
         reputationScore: 50,
         profileCompleted: true,
         createdAt: new Date().toISOString(),
       });
 
-      // Register hospital in the hospitals collection for the dropdown
-      if (form.role === "hospital") {
+      if (finalRole === "hospital") {
         await setDoc(doc(db, "hospitals", user.uid), {
           uid: user.uid,
           name: form.name,
           city: form.city,
           address: form.address,
           phone: form.phone,
+          verified: false,
           createdAt: new Date().toISOString(),
         });
       }
 
       toast.success("Profile completed! Welcome to BloodLine.");
-      navigate(`/dashboard/${form.role}`);
+      navigate(`/dashboard/${finalRole}`);
     } catch (err: any) {
       toast.error(err?.message || "Failed to save profile");
     } finally {
@@ -93,7 +124,7 @@ export default function ProfileSetup() {
     ...(form.role === "donor" ? [
       { label: "Age", value: String(form.age) },
       { label: "Weight", value: `${form.weight} kg` },
-      { label: "Health Confirmed", value: form.healthConfirmed ? "Yes ✅" : "No ❌" },
+      { label: "Health Confirmed", value: form.healthConfirmed ? "Yes" : "No" },
       { label: "Last Donation", value: form.lastDonationDate || "Not specified" },
     ] : []),
   ];
@@ -112,11 +143,10 @@ export default function ProfileSetup() {
               </div>
 
               <form onSubmit={handlePreview} className="bg-card rounded-2xl shadow-card border border-border p-6 space-y-5">
-                {/* Role selection */}
                 <div>
                   <Label className="text-sm font-semibold">I am a</Label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
-                    {(["donor", "receiver", "hospital", "admin"] as UserRole[]).map((r) => (
+                  <div className="grid grid-cols-3 gap-2 mt-2">
+                    {(["donor", "receiver", "hospital"] as UserRole[]).map((r) => (
                       <button
                         type="button"
                         key={r}
@@ -131,6 +161,9 @@ export default function ProfileSetup() {
                       </button>
                     ))}
                   </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Admin accounts are assigned by email verification
+                  </p>
                 </div>
 
                 <div className="grid sm:grid-cols-2 gap-4">
@@ -174,18 +207,20 @@ export default function ProfileSetup() {
                     <div className="grid sm:grid-cols-2 gap-4">
                       <div>
                         <Label htmlFor="age">Age</Label>
-                        <Input id="age" type="number" value={form.age} onChange={(e) => set("age", +e.target.value)} min={18} max={65} className="mt-1" />
+                        <Input id="age" type="number" value={form.age} onChange={(e) => set("age", +e.target.value)} min={18} max={65} required className="mt-1" />
+                        <p className="text-xs text-muted-foreground mt-1">Must be 18-65 years</p>
                       </div>
                       <div>
                         <Label htmlFor="weight">Weight (kg)</Label>
-                        <Input id="weight" type="number" value={form.weight} onChange={(e) => set("weight", +e.target.value)} min={45} className="mt-1" />
+                        <Input id="weight" type="number" value={form.weight} onChange={(e) => set("weight", +e.target.value)} min={45} required className="mt-1" />
+                        <p className="text-xs text-muted-foreground mt-1">Minimum 45 kg</p>
                       </div>
                     </div>
                     <div>
                       <Label htmlFor="lastDonation">Last Donation Date (optional)</Label>
                       <Input id="lastDonation" type="date" value={form.lastDonationDate} onChange={(e) => set("lastDonationDate", e.target.value)} className="mt-1" />
                     </div>
-                    <label className="flex items-center gap-2 cursor-pointer">
+                    <label className="flex items-center gap-2 cursor-pointer bg-muted/30 p-3 rounded-lg">
                       <input
                         type="checkbox"
                         checked={form.healthConfirmed}

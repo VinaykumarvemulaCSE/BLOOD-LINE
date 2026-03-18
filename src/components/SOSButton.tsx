@@ -21,11 +21,11 @@ export default function SOSButton() {
     setSending(true);
 
     try {
-      // ✅ Single clean call
-      await sendSOSAlert(profile, user.uid);
+      const result = await sendSOSAlert(profile, user.uid);
 
       toast.success(
-        `🚨 Emergency SOS sent! Admin (${ADMIN_EMAIL}) has been notified.`
+        `Emergency SOS sent! ${result.alertedDonors} compatible donors in ${profile.city} have been notified.`,
+        { duration: 5000 }
       );
     } catch (err) {
       console.error("SOS error:", err);
@@ -40,7 +40,7 @@ export default function SOSButton() {
       onClick={handleSOS}
       className="fixed bottom-6 left-6 z-50 w-14 h-14 rounded-full gradient-primary text-primary-foreground shadow-primary flex items-center justify-center animate-sos-pulse"
       whileTap={{ scale: 0.9 }}
-      title="Emergency SOS"
+      title="Emergency SOS - Broadcast to nearby donors"
       disabled={sending}
     >
       <Phone className={`h-6 w-6 ${sending ? "animate-spin" : ""}`} />

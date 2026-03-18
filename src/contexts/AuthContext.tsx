@@ -12,6 +12,8 @@ import { auth, db, googleProvider } from "@/lib/firebase";
 
 export type UserRole = "donor" | "receiver" | "hospital" | "admin";
 
+const ADMIN_EMAILS = ["kumarvinay072007@gmail.com", "admin@bloodline.app"];
+
 export interface UserProfile {
   uid: string;
   name: string;
@@ -52,7 +54,6 @@ export function useAuth() {
   return ctx;
 }
 
-// Test accounts used for demo logins — updated to real registered accounts
 export const DEMO_ACCOUNTS: Record<UserRole, { email: string; password: string; name: string }> = {
   donor:    { email: "test.donor@bloodline.app",    password: "BloodLine@Test2024", name: "Test Donor" },
   receiver: { email: "test.receiver@bloodline.app", password: "BloodLine@Test2024", name: "Test Receiver" },
@@ -62,7 +63,6 @@ export const DEMO_ACCOUNTS: Record<UserRole, { email: string; password: string; 
 
 export { DEMO_ACCOUNTS as DEMO_ACCOUNTS_EXPORT };
 
-// Pre-built demo profiles for each role
 const buildDemoProfile = (uid: string, role: UserRole, email: string, name: string): UserProfile => ({
   uid,
   name,
@@ -122,7 +122,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const loginWithGoogle = async () => {
-    await signInWithPopup(auth, googleProvider);
+    const result = await signInWithPopup(auth, googleProvider);
+    const existingProfile = await getDoc(doc(db, "users", result.user.uid));
+
+    if (!existingProfile.exists()) {
+      const defaultRole = ADMIN_EMAILS.includes(result.user.email || "") ? "admin" : "donor";
+      await setDoc(doc(db, "users", result.user.uid), {
+        uid: result.user.uid,
+        name: result.user.displayName || "User",
+        email: result.user.email || "",
+        phone: "",
+        bloodGroup: "O+",
+        city: "",
+        address: "",
+        role: defaultRole,
+        profileCompleted: false,
+        reputationScore: 50,
+        createdAt: new Date().toISOString(),
+      });
+    }
   };
 
   const demoLogin = async (role: UserRole) => {
@@ -131,23 +149,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       cred = await signInWithEmailAndPassword(auth, email, password);
     } catch {
-      // Account doesn't exist yet — create it
       cred = await createUserWithEmailAndPassword(auth, email, password);
     }
 
-    // Always ensure Firestore profile exists (even if account was pre-existing)
     const profileRef = doc(db, "users", cred.user.uid);
     const snap = await getDoc(profileRef);
     if (!snap.exists()) {
       const demoProfile = buildDemoProfile(cred.user.uid, role, email, name);
       await setDoc(profileRef, demoProfile);
-      // If hospital role, also register in hospitals collection
       if (role === "hospital") {
         await setDoc(doc(db, "hospitals", cred.user.uid), {
           uid: cred.user.uid,
           name,
           city: "Hyderabad",
           address: "Demo Address, Hyderabad",
+          verified: false,
           createdAt: new Date().toISOString(),
         });
       }
@@ -161,7 +177,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const updateProfile = async (data: Partial<UserProfile>) => {
     if (!user) return;
-    await setDoc(doc(db, "users", user.uid), data, { merge: true });
+
+    const existingProfile = await getDoc(doc(db, "users", user.uid));
+    const existing = existingProfile.data() as UserProfile | undefined;
+
+    const protectedData = { ...data };
+
+    if (existing && existing.role && data.role && existing.role !== data.role) {
+      if (!ADMIN_EMAILS.includes(user.email || "")) {
+        delete protectedData.role;
+      }
+    }
+
+    await setDoc(doc(db, "users", user.uid), protectedData, { merge: true });
     await refreshProfile();
   };
 

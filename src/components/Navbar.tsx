@@ -4,6 +4,7 @@ import { Menu, X, Heart, LogOut, LayoutDashboard, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
+import NotificationCenter from "@/components/NotificationCenter";
 
 const NAV_LINKS = [
   { to: "/", label: "Home" },
@@ -53,6 +54,7 @@ export default function Navbar() {
                   {profile.name}
                 </span>
               )}
+              <NotificationCenter />
               <Button
                 size="sm"
                 variant="outline"

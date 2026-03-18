@@ -8,9 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import {
-  Heart, CheckCircle2, MessageSquare, User, Droplets, Calendar, Activity, Send, ShieldCheck
-} from "lucide-react";
+import { Heart, CircleCheck as CheckCircle2, MessageSquare, User, Droplets, Calendar, Activity, Send, ShieldCheck } from "lucide-react";
 import Navbar from "@/components/Navbar";
 
 // --- TYPES ---
@@ -84,7 +82,7 @@ export default function DonorDashboard() {
   const acceptRequest = async (reqId: string) => {
     if (!profile) return;
     try {
-      await acceptBloodRequest(reqId, profile.uid);
+      await acceptBloodRequest(reqId, profile.uid, profile.name, profile.phone);
     } catch (err) {
       console.error("Failed to accept request:", err);
     }
