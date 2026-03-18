@@ -10,6 +10,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "@/components/Navbar";
 import { Heart, CheckCircle2, ArrowLeft, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { doc, setDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 export default function ProfileSetup() {
   const { user, updateProfile } = useAuth();
@@ -53,12 +55,25 @@ export default function ProfileSetup() {
         weight: form.weight,
         healthConfirmed: form.healthConfirmed,
         lastDonationDate: form.lastDonationDate || null,
-        donorAvailability: true,
+        donorAvailability: form.role === "donor",
         reputationScore: 50,
         profileCompleted: true,
         createdAt: new Date().toISOString(),
       });
-      toast.success("Profile completed!");
+
+      // Register hospital in the hospitals collection for the dropdown
+      if (form.role === "hospital") {
+        await setDoc(doc(db, "hospitals", user.uid), {
+          uid: user.uid,
+          name: form.name,
+          city: form.city,
+          address: form.address,
+          phone: form.phone,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      toast.success("Profile completed! Welcome to BloodLine.");
       navigate(`/dashboard/${form.role}`);
     } catch (err: any) {
       toast.error(err?.message || "Failed to save profile");

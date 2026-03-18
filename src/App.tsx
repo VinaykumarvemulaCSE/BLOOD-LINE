@@ -1,9 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, Navigate, useNavigate } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import { useEffect } from "react";
+import type { UserRole } from "@/contexts/AuthContext";
 
 import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
@@ -21,14 +21,18 @@ import SOSButton from "@/components/SOSButton";
 
 const queryClient = new QueryClient();
 
-function AuthGuard({ children }: { children: React.ReactNode }) {
+// Guard: must be logged in + profile complete + correct role
+function AuthGuard({ requiredRole, children }: { requiredRole: UserRole; children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
   if (loading) return <div className="flex min-h-screen items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
   if (!user) return <Navigate to="/login" replace />;
   if (!profile?.profileCompleted) return <Navigate to="/profile-setup" replace />;
+  // Redirect to correct dashboard if wrong role
+  if (profile.role !== requiredRole) return <Navigate to={`/dashboard/${profile.role}`} replace />;
   return <>{children}</>;
 }
 
+// Guard: must be logged in (for profile setup)
 function ProfileGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="flex min-h-screen items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
@@ -49,6 +53,12 @@ function LoginRoute() {
   return <Login />;
 }
 
+// SOS button only shown when authenticated
+function GlobalSOS() {
+  const { user } = useAuth();
+  return user ? <SOSButton /> : null;
+}
+
 function AppRoutes() {
   return (
     <Routes>
@@ -59,10 +69,10 @@ function AppRoutes() {
       <Route path="/donate" element={<DonatePage />} />
       <Route path="/hospitals" element={<HospitalsPage />} />
       <Route path="/about" element={<AboutPage />} />
-      <Route path="/dashboard/donor" element={<AuthGuard><DonorDashboard /></AuthGuard>} />
-      <Route path="/dashboard/receiver" element={<AuthGuard><ReceiverDashboard /></AuthGuard>} />
-      <Route path="/dashboard/hospital" element={<AuthGuard><HospitalDashboard /></AuthGuard>} />
-      <Route path="/dashboard/admin" element={<AuthGuard><AdminDashboard /></AuthGuard>} />
+      <Route path="/dashboard/donor" element={<AuthGuard requiredRole="donor"><DonorDashboard /></AuthGuard>} />
+      <Route path="/dashboard/receiver" element={<AuthGuard requiredRole="receiver"><ReceiverDashboard /></AuthGuard>} />
+      <Route path="/dashboard/hospital" element={<AuthGuard requiredRole="hospital"><HospitalDashboard /></AuthGuard>} />
+      <Route path="/dashboard/admin" element={<AuthGuard requiredRole="admin"><AdminDashboard /></AuthGuard>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
@@ -75,7 +85,7 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <AppRoutes />
-          <SOSButton />
+          <GlobalSOS />
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>

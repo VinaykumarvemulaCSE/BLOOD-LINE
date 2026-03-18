@@ -99,7 +99,7 @@ export default function FindBlood() {
                     </div>
                     <div className="text-right text-xs text-muted-foreground">
                       <Clock className="h-3 w-3 inline mr-1" />
-                      {new Date(req.createdAt).toLocaleDateString()}
+                      {(() => { const ca = req.createdAt as any; return ca?.toDate ? ca.toDate().toLocaleDateString() : ca ? new Date(ca).toLocaleDateString() : "—"; })()}
                     </div>
                   </div>
                 </motion.div>

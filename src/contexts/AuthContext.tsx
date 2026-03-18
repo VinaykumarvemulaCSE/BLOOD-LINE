@@ -52,14 +52,35 @@ export function useAuth() {
   return ctx;
 }
 
-const DEMO_ACCOUNTS: Record<UserRole, { email: string; password: string; name: string }> = {
-  donor: { email: "demo.donor@bloodline.app", password: "demo123456", name: "Demo Donor" },
-  receiver: { email: "demo.receiver@bloodline.app", password: "demo123456", name: "Demo Receiver" },
-  hospital: { email: "demo.hospital@bloodline.app", password: "demo123456", name: "Demo Hospital" },
-  admin: { email: "demo.admin@bloodline.app", password: "demo123456", name: "Demo Admin" },
+// Test accounts used for demo logins — updated to real registered accounts
+export const DEMO_ACCOUNTS: Record<UserRole, { email: string; password: string; name: string }> = {
+  donor:    { email: "test.donor@bloodline.app",    password: "BloodLine@Test2024", name: "Test Donor" },
+  receiver: { email: "test.receiver@bloodline.app", password: "BloodLine@Test2024", name: "Test Receiver" },
+  hospital: { email: "test.hospital@bloodline.app", password: "BloodLine@Test2024", name: "Test Hospital" },
+  admin:    { email: "test.admin@bloodline.app",    password: "BloodLine@Test2024", name: "Test Admin" },
 };
 
-export { DEMO_ACCOUNTS };
+export { DEMO_ACCOUNTS as DEMO_ACCOUNTS_EXPORT };
+
+// Pre-built demo profiles for each role
+const buildDemoProfile = (uid: string, role: UserRole, email: string, name: string): UserProfile => ({
+  uid,
+  name,
+  email,
+  phone: "+91 9876543210",
+  bloodGroup: role === "receiver" ? "A+" : "O+",
+  city: "Hyderabad",
+  address: "Demo Address, Hyderabad",
+  role,
+  age: 28,
+  weight: 65,
+  healthConfirmed: true,
+  lastDonationDate: null,
+  donorAvailability: role === "donor",
+  reputationScore: 50,
+  profileCompleted: true,
+  createdAt: new Date().toISOString(),
+});
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -106,30 +127,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const demoLogin = async (role: UserRole) => {
     const { email, password, name } = DEMO_ACCOUNTS[role];
+    let cred;
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      cred = await signInWithEmailAndPassword(auth, email, password);
     } catch {
-      // If demo account doesn't exist, create it with pre-filled profile
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
-      const demoProfile: UserProfile = {
-        uid: cred.user.uid,
-        name,
-        email,
-        phone: "+91 9876543210",
-        bloodGroup: role === "receiver" ? "A+" : "O+",
-        city: "Hyderabad",
-        address: "Demo Address, Hyderabad",
-        role,
-        age: 28,
-        weight: 65,
-        healthConfirmed: true,
-        lastDonationDate: null,
-        donorAvailability: role === "donor",
-        reputationScore: 50,
-        profileCompleted: true,
-        createdAt: new Date().toISOString(),
-      };
-      await setDoc(doc(db, "users", cred.user.uid), demoProfile);
+      // Account doesn't exist yet — create it
+      cred = await createUserWithEmailAndPassword(auth, email, password);
+    }
+
+    // Always ensure Firestore profile exists (even if account was pre-existing)
+    const profileRef = doc(db, "users", cred.user.uid);
+    const snap = await getDoc(profileRef);
+    if (!snap.exists()) {
+      const demoProfile = buildDemoProfile(cred.user.uid, role, email, name);
+      await setDoc(profileRef, demoProfile);
+      // If hospital role, also register in hospitals collection
+      if (role === "hospital") {
+        await setDoc(doc(db, "hospitals", cred.user.uid), {
+          uid: cred.user.uid,
+          name,
+          city: "Hyderabad",
+          address: "Demo Address, Hyderabad",
+          createdAt: new Date().toISOString(),
+        });
+      }
     }
   };
 
