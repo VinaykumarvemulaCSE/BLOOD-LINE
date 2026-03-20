@@ -1,4 +1,5 @@
 import { useState } from "react";
+import emailjs from "@emailjs/browser";
 import { Heart, Mail, Send } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -17,15 +18,34 @@ export default function Footer() {
       return;
     }
     setSending(true);
-    // EmailJS placeholder — user will integrate later
     try {
-      // TODO: Replace with EmailJS integration
-      // emailjs.send('service_id', 'template_id', { from_email: email, message }, 'public_key')
-      toast.success("Message sent to admin! (EmailJS integration pending)");
+      const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
+      const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
+      const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+
+      if (!serviceId || !templateId || !publicKey) {
+        toast.error("EmailJS credentials are not configured.");
+        setSending(false);
+        return;
+      }
+
+      await emailjs.send(
+        serviceId,
+        templateId,
+        {
+          from_email: email,
+          message: message,
+          to_name: "Admin",
+        },
+        publicKey
+      );
+
+      toast.success("Message sent to admin successfully!");
       setEmail("");
       setMessage("");
-    } catch {
-      toast.error("Failed to send message");
+    } catch (error) {
+      console.error("EmailJS Error:", error);
+      toast.error("Failed to send message. Please try again later.");
     } finally {
       setSending(false);
     }
