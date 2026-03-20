@@ -7,14 +7,15 @@ import { db } from "@/lib/firebase";
 function useFirestoreCount(collectionName: string, filterField?: string, filterValue?: string) {
   const [count, setCount] = useState(0);
   useEffect(() => {
-    const q = filterField && filterValue
-      ? query(collection(db, collectionName), where(filterField, "==", filterValue))
-      : collection(db, collectionName);
-    const unsub = onSnapshot(q, (snap) => setCount(snap.size));
+    // Always use a filter — unfiltered collection reads are blocked for guests by Firestore rules
+    if (!filterField || !filterValue) return;
+    const q = query(collection(db, collectionName), where(filterField, "==", filterValue));
+    const unsub = onSnapshot(q, (snap) => setCount(snap.size), () => setCount(0));
     return unsub;
   }, [collectionName, filterField, filterValue]);
   return count;
 }
+
 
 function Counter({ target, suffix }: { target: number; suffix: string }) {
   const [count, setCount] = useState(0);
@@ -59,17 +60,17 @@ function Counter({ target, suffix }: { target: number; suffix: string }) {
 }
 
 export default function StatsSection() {
-  const totalUsers = useFirestoreCount("users");
-  const donors = useFirestoreCount("users", "role", "donor");
+  const donors     = useFirestoreCount("users", "role", "donor");
   const activeRequests = useFirestoreCount("blood_requests", "status", "open");
-  const hospitals = useFirestoreCount("users", "role", "hospital");
-  const donations = useFirestoreCount("donations");
+  const hospitals  = useFirestoreCount("users", "role", "hospital");
+  // Count completed donations — status is public readable per rules
+  const donations  = useFirestoreCount("donations", "status", "verified");
 
   const stats = [
-    { icon: Droplets, label: "Registered Donors", target: donors, suffix: "" },
-    { icon: Activity, label: "Active Requests", target: activeRequests, suffix: "" },
-    { icon: Heart, label: "Donations Made", target: donations, suffix: "" },
-    { icon: Building2, label: "Connected Hospitals", target: hospitals, suffix: "" },
+    { icon: Droplets, label: "Registered Donors",   target: donors,         suffix: "" },
+    { icon: Activity, label: "Active Requests",     target: activeRequests, suffix: "" },
+    { icon: Heart,    label: "Donations Verified",  target: donations,      suffix: "" },
+    { icon: Building2, label: "Connected Hospitals", target: hospitals,     suffix: "" },
   ];
 
   return (
