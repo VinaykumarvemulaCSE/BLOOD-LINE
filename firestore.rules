@@ -1,0 +1,354 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdminEmail() {
+      return signedIn() && (
+        request.auth.token.email == 'kumarvinay072007@gmail.com' ||
+        request.auth.token.email == 'admin@bloodline.app' ||
+        // Demo admin account used by the app for testing.
+        request.auth.token.email == 'test.admin@bloodline.app'
+      );
+    }
+
+    function myUser() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function myRole() {
+      return signedIn() && myUser().data != null ? myUser().data.role : null;
+    }
+
+    function isAdmin() {
+      return signedIn() && myRole() == 'admin';
+    }
+
+    function isHospital() {
+      return signedIn() && myRole() == 'hospital';
+    }
+
+    function isDonor() {
+      return signedIn() && myRole() == 'donor';
+    }
+
+    function isReceiver() {
+      return signedIn() && myRole() == 'receiver';
+    }
+
+    function isValidUserRole(role) {
+      return role == 'donor' || role == 'receiver' || role == 'hospital' || role == 'admin';
+    }
+
+    // -----------------------------
+    // Users
+    // -----------------------------
+    match /users/{uid} {
+      allow get, list: if (
+        // Public landing pages need donor/hospital counts.
+        (!signedIn() && resource != null && (resource.data.role == 'donor' || resource.data.role == 'hospital'))
+
+        // Authenticated users can always read their own profile.
+        || (signedIn() && uid == request.auth.uid)
+
+        // Admins can read all.
+        || (signedIn() && isAdmin())
+
+        // Authenticated users can read donor/hospital profiles for matching/SOS.
+        || (signedIn() && resource != null && (resource.data.role == 'donor' || resource.data.role == 'hospital'))
+      );
+
+      allow create: if (
+        signedIn() &&
+        uid == request.auth.uid &&
+        request.resource.data.uid == uid &&
+        request.resource.data.role is string &&
+        isValidUserRole(request.resource.data.role) &&
+        (request.resource.data.role != 'admin' || isAdminEmail())
+      );
+
+      allow update: if (
+        signedIn() &&
+        // Allow self updates, plus admin updates, and hospital updates to stats.
+        (
+          uid == request.auth.uid || 
+          isAdmin() ||
+          (isHospital() && resource.data.role == 'donor' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastDonationDate', 'reputationScore', 'donorAvailability']))
+        ) &&
+        request.resource.data.uid == uid &&
+        request.resource.data.role is string &&
+        isValidUserRole(request.resource.data.role) &&
+        (request.resource.data.role != 'admin' || isAdminEmail()) &&
+
+        // Non-admins can change roles only during onboarding (profileCompleted == false).
+        (
+          resource.data.role == request.resource.data.role ||
+          resource.data.profileCompleted != true ||
+          isAdminEmail()
+        )
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // -----------------------------
+    // Hospitals registration
+    // -----------------------------
+    match /hospitals/{uid} {
+      allow get, list: if signedIn();
+
+      allow create, update: if (
+        signedIn() &&
+        (isAdmin() || (uid == request.auth.uid && isHospital()))
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // -----------------------------
+    // Hospital inventory
+    // -----------------------------
+    match /hospital_inventory/{uid} {
+      allow get, list: if signedIn() && (isAdmin() || (uid == request.auth.uid && isHospital()));
+
+      allow create, update: if signedIn() && (isAdmin() || (uid == request.auth.uid && isHospital()));
+
+      allow delete: if isAdmin();
+    }
+
+    // -----------------------------
+    // Blood requests workflow
+    // -----------------------------
+    match /blood_requests/{rid} {
+      allow get, list: if (
+        // Public: only open requests.
+        (!signedIn() && resource != null && resource.data.status == 'open')
+
+        // Authenticated: admin/hospital can read everything.
+        || (signedIn() && (isAdmin() || isHospital()))
+
+        // Authenticated: donors can read open requests.
+        || (signedIn() && isDonor() && resource != null && resource.data.status == 'open')
+
+        // Authenticated: receivers can read their own requests.
+        || (signedIn() && isReceiver() && resource != null && resource.data.createdBy == request.auth.uid)
+
+        // Authenticated: donors can read accepted/completed/verified requests assigned to them.
+        || (signedIn() && isDonor() && resource != null && resource.data.acceptedBy == request.auth.uid
+            && (resource.data.status == 'accepted' || resource.data.status == 'completed' || resource.data.status == 'verified'))
+      );
+
+      allow create: if (
+        signedIn() &&
+        (isReceiver() || isAdmin()) &&
+        request.resource.data.createdBy == request.auth.uid &&
+        request.resource.data.status == 'open'
+      );
+
+      allow update: if (
+        signedIn() && (
+          isAdmin()
+
+          // Donor accepts an open request -> accepted
+          || (
+            isDonor() &&
+            resource.data.status == 'open' &&
+            resource.data.acceptedBy == null &&
+            request.resource.data.status == 'accepted' &&
+            request.resource.data.acceptedBy == request.auth.uid
+          )
+
+          // Donor completes accepted request -> completed
+          || (
+            isDonor() &&
+            resource.data.status == 'accepted' &&
+            resource.data.acceptedBy == request.auth.uid &&
+            request.resource.data.status == 'completed'
+          )
+
+          // Hospital verifies completed request -> verified
+          || (
+            isHospital() &&
+            resource.data.status == 'completed' &&
+            (resource.data.hospitalUid == null || resource.data.hospitalUid == '' || resource.data.hospitalUid == request.auth.uid) &&
+            request.resource.data.status == 'verified' &&
+            request.resource.data.verifiedBy == request.auth.uid
+          )
+
+          // Hospital directly fulfills open request -> verified
+          || (
+            isHospital() &&
+            resource.data.status == 'open' &&
+            request.resource.data.status == 'verified' &&
+            request.resource.data.verifiedBy == request.auth.uid &&
+            request.resource.data.acceptedBy == request.auth.uid
+          )
+        )
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // -----------------------------
+    // Donations
+    // -----------------------------
+    match /donations/{did} {
+      allow get, list: if (
+        // Public landing page stats (donations made) require listing donations.
+        !signedIn()
+        || (
+          signedIn() && (
+            isAdmin()
+            || resource.data.donorId == request.auth.uid
+            || (isHospital() && (
+              resource.data.hospitalUid == null
+              || resource.data.hospitalUid == ''
+              || resource.data.hospitalUid == request.auth.uid
+              // Allow if parent blood_request is verifiable by this hospital
+              || (resource.data.requestId is string
+                  && get(/databases/$(database)/documents/blood_requests/$(resource.data.requestId)).data.status in ['completed', 'verified']
+                  && (get(/databases/$(database)/documents/blood_requests/$(resource.data.requestId)).data.hospitalUid == null
+                      || get(/databases/$(database)/documents/blood_requests/$(resource.data.requestId)).data.hospitalUid == ''
+                      || get(/databases/$(database)/documents/blood_requests/$(resource.data.requestId)).data.hospitalUid == request.auth.uid))
+            ))
+          )
+        )
+      );
+
+      allow create: if (
+        signedIn() &&
+        isDonor() &&
+        request.resource.data.donorId == request.auth.uid &&
+        request.resource.data.status == 'scheduled'
+      );
+
+      allow update: if (
+        signedIn() && (
+          isAdmin()
+
+          // Donor scheduled donation -> completed
+          || (
+            isDonor() &&
+            resource.data.donorId == request.auth.uid &&
+            resource.data.status == 'scheduled' &&
+            request.resource.data.status == 'completed'
+          )
+
+          // Hospital verifies donation: allow when parent blood_request is completed or verified
+          // (verified covers in-transaction case where request was just updated)
+          || (
+            isHospital() &&
+            resource.data.requestId is string &&
+            (resource.data.hospitalUid == null || resource.data.hospitalUid == '' || resource.data.hospitalUid == request.auth.uid) &&
+            get(/databases/$(database)/documents/blood_requests/$(resource.data.requestId)).data.status in ['completed', 'verified'] &&
+            request.resource.data.status == 'verified' &&
+            request.resource.data.verifiedBy == request.auth.uid
+          )
+        )
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    // -----------------------------
+    // Messages (request-scoped chat)
+    // -----------------------------
+    match /messages/{mid} {
+      function requestForMessage(requestId) {
+        return get(/databases/$(database)/documents/blood_requests/$(requestId));
+      }
+
+      function canParticipateInRequest(requestId) {
+        let req = requestForMessage(requestId);
+        return req.data != null && (
+          // Receiver can always message their own requests.
+          request.auth.uid == req.data.createdBy
+
+          // Donor can message after accepting (acceptedBy set).
+          || (request.auth.uid == req.data.acceptedBy)
+
+          // Hospital can message once it is responsible for the request.
+          || (
+            isHospital()
+            && (
+              (req.data.hospitalUid == request.auth.uid)
+              || (req.data.hospitalUid == null)
+              || (req.data.hospitalUid == '')
+            )
+            && (req.data.status == 'completed' || req.data.status == 'verified')
+          )
+
+          // After verification, verifiedBy is set even if hospitalUid was null.
+          || (request.auth.uid == req.data.verifiedBy)
+        );
+      }
+
+      allow get, list: if signedIn() && (
+        // Admins can inspect everything.
+        isAdmin()
+        // For request-scoped chat, permission is derived from the parent request state,
+        // not from the `participants` array (which may be missing the eventual hospital before verification).
+        || (resource.data.requestId is string && canParticipateInRequest(resource.data.requestId))
+      );
+
+      allow create: if signedIn() && (
+        isAdmin()
+        || (
+          request.resource.data.senderId == request.auth.uid
+          && request.resource.data.requestId is string
+          && request.resource.data.participants is list
+          && request.auth.uid in request.resource.data.participants
+          && canParticipateInRequest(request.resource.data.requestId)
+        )
+      );
+
+      allow update, delete: if false;
+    }
+
+    // -----------------------------
+    // Notifications
+    // -----------------------------
+    match /notifications/{nid} {
+      allow get, list: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+
+      // Create rules:
+      // - Admins can create notifications for any user.
+      // - Users can create notifications for themselves (e.g., future self-notifications).
+      // - SOS/workflow services can create specific notification types for other users.
+      allow create: if signedIn() && (
+        isAdmin()
+        || request.resource.data.userId == request.auth.uid
+        || (
+          request.resource.data.type is string
+          && (
+            request.resource.data.type == 'sos_emergency'
+            || request.resource.data.type == 'sos_alert'
+            || request.resource.data.type == 'emergency_request'
+            || request.resource.data.type == 'donation_verified'
+            || request.resource.data.type == 'request_fulfilled'
+          )
+        )
+      );
+
+      // Users can mark their own notifications as read (and we allow any update to their docs).
+      allow update: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+
+      allow delete: if isAdmin();
+    }
+
+    // -----------------------------
+    // SOS alerts
+    // -----------------------------
+    match /sos_alerts/{aid} {
+      allow get, list: if signedIn() && (isAdmin() || resource.data.userId == request.auth.uid);
+
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+
+      allow update, delete: if isAdmin();
+    }
+  }
+}
+

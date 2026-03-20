@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { Badge } from "@/components/ui/badge";
 import "leaflet/dist/leaflet.css";
@@ -63,7 +63,8 @@ export default function BloodMap({ className = "" }: MapProps) {
   const [requests, setRequests] = useState<any[]>([]);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "blood_requests"), (snap) => {
+    const q = query(collection(db, "blood_requests"), where("status", "==", "open"));
+    const unsub = onSnapshot(q, (snap) => {
       setRequests(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
     return unsub;

@@ -59,7 +59,25 @@ export default function NotificationCenter() {
     await Promise.all(unread.map((n) => markAsRead(n.id)));
   };
 
+  const formatNotifTime = (createdAt: any) => {
+    if (!createdAt) return "Just now";
+    const d = typeof createdAt?.toDate === "function" ? createdAt.toDate() : new Date(createdAt);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return d.toLocaleDateString(undefined, { dateStyle: "medium" });
+  };
+
   const getIcon = (type: string, priority?: string) => {
+    if (type === "sos_emergency") {
+      return <AlertTriangle className="h-4 w-4 text-destructive" />;
+    }
     if (priority === "critical" || type === "sos_alert") {
       return <AlertTriangle className="h-4 w-4 text-destructive" />;
     }
@@ -94,7 +112,7 @@ export default function NotificationCenter() {
               initial={{ opacity: 0, x: 300 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 300 }}
-              className="fixed right-4 top-20 w-96 max-h-[80vh] bg-card border border-border rounded-2xl shadow-card-hover z-50 flex flex-col"
+              className="fixed right-4 left-4 md:left-auto top-20 w-auto md:w-96 max-w-md max-h-[80vh] bg-card border border-border rounded-2xl shadow-xl z-50 flex flex-col"
             >
               <div className="flex items-center justify-between p-4 border-b border-border">
                 <div className="flex items-center gap-2">
@@ -123,9 +141,12 @@ export default function NotificationCenter() {
 
               <div className="flex-1 overflow-y-auto p-2">
                 {notifications.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                    <Bell className="h-12 w-12 mb-3 opacity-30" />
-                    <p className="text-sm">No notifications yet</p>
+                  <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+                    <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-3">
+                      <Bell className="h-8 w-8 text-muted-foreground" />
+                    </div>
+                    <p className="text-sm font-medium text-foreground">No notifications yet</p>
+                    <p className="text-xs text-muted-foreground mt-1">You'll see alerts for SOS, donations, and admin messages here</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -149,6 +170,16 @@ export default function NotificationCenter() {
                           {getIcon(notif.type, notif.priority)}
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium leading-snug">{notif.message}</p>
+                            {((notif.type === "sos_emergency" || notif.type === "sos_alert" || notif.type === "emergency_request") || notif.priority === "critical") && (
+                              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                <Badge variant="destructive" className="text-[10px]">SOS</Badge>
+                                {notif.priority && (
+                                  <Badge variant="outline" className="text-[10px]">
+                                    {notif.priority.toUpperCase()}
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
                             {notif.bloodGroup && (
                               <div className="flex items-center gap-2 mt-2 flex-wrap">
                                 <Badge className="bg-primary/10 text-primary text-xs">
@@ -159,8 +190,13 @@ export default function NotificationCenter() {
                                 )}
                               </div>
                             )}
+                            {notif.phone && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Contact: {notif.phone}
+                              </p>
+                            )}
                             <p className="text-xs text-muted-foreground mt-1">
-                              {notif.createdAt?.toDate?.()?.toLocaleString() || "Just now"}
+                              {formatNotifTime(notif.createdAt)}
                             </p>
                           </div>
                         </div>

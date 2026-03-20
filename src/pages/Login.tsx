@@ -63,6 +63,7 @@ export default function Login() {
     try {
       await demoLogin(role);
       toast.success(`Demo ${role} login successful!`);
+      navigate(`/dashboard/${role}`);
     } catch (err: any) {
       toast.error(err?.message || "Demo login failed");
     } finally {
@@ -96,21 +97,19 @@ export default function Login() {
             <div className="flex rounded-xl bg-muted p-1 mb-6">
               <button
                 onClick={() => setTab("login")}
-                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
-                  tab === "login"
+                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${tab === "login"
                     ? "bg-card shadow-sm text-foreground"
                     : "text-muted-foreground"
-                }`}
+                  }`}
               >
                 Log In
               </button>
               <button
                 onClick={() => setTab("register")}
-                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${
-                  tab === "register"
+                className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all ${tab === "register"
                     ? "bg-card shadow-sm text-foreground"
                     : "text-muted-foreground"
-                }`}
+                  }`}
               >
                 Register
               </button>
@@ -193,6 +192,12 @@ export default function Login() {
                   </Button>
                 ))}
               </div>
+              {/* <div className="mt-4 text-center text-xs text-muted-foreground bg-muted/50 p-3 rounded-lg border border-border/50">
+                <p className="font-medium mb-1 text-foreground/80">Manual Demo Login Credentials:</p>
+                <p className="mb-0.5">Email: <span className="font-mono bg-background px-1 py-0.5 rounded border border-border">test.[role]@bloodline.app</span></p>
+                <p>Password: <span className="font-mono bg-background px-1 py-0.5 rounded border border-border">BloodLine@Test2026</span></p>
+                <p className="mt-1 text-[10px] opacity-70">(Admin uses your personal credentials)</p>
+              </div> */}
             </div>
           </div>
         </motion.div>

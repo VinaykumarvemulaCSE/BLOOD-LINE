@@ -12,7 +12,7 @@ import { auth, db, googleProvider } from "@/lib/firebase";
 
 export type UserRole = "donor" | "receiver" | "hospital" | "admin";
 
-const ADMIN_EMAILS = ["kumarvinay072007@gmail.com", "admin@bloodline.app"];
+const ADMIN_EMAILS = "kumarvinay072007@gmail.com";
 
 export interface UserProfile {
   uid: string;
@@ -55,10 +55,10 @@ export function useAuth() {
 }
 
 export const DEMO_ACCOUNTS: Record<UserRole, { email: string; password: string; name: string }> = {
-  donor:    { email: "test.donor@bloodline.app",    password: "BloodLine@Test2024", name: "Test Donor" },
-  receiver: { email: "test.receiver@bloodline.app", password: "BloodLine@Test2024", name: "Test Receiver" },
-  hospital: { email: "test.hospital@bloodline.app", password: "BloodLine@Test2024", name: "Test Hospital" },
-  admin:    { email: "test.admin@bloodline.app",    password: "BloodLine@Test2024", name: "Test Admin" },
+  donor: { email: "test.donor@bloodline.app", password: "BloodLine@Test2026", name: "Test Donor" },
+  receiver: { email: "test.receiver@bloodline.app", password: "BloodLine@Test2026", name: "Test Receiver" },
+  hospital: { email: "test.hospital@bloodline.app", password: "BloodLine@Test2026", name: "Test Hospital" },
+  admin: { email: ADMIN_EMAILS, password: "Vinay@123", name: "Vinay Kumar" },
 };
 
 export { DEMO_ACCOUNTS as DEMO_ACCOUNTS_EXPORT };
@@ -90,9 +90,60 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const fetchProfile = async (u: User) => {
     const snap = await getDoc(doc(db, "users", u.uid));
     if (snap.exists()) {
-      setProfile(snap.data() as UserProfile);
+      const data = snap.data() as Record<string, unknown>;
+      setProfile({ ...data, uid: data?.uid ?? u.uid } as UserProfile);
     } else {
       setProfile(null);
+    }
+  };
+
+  const getDemoRoleByEmail = (email: string | null | undefined): UserRole | null => {
+    const normalized = (email || "").trim().toLowerCase();
+    const roles = Object.keys(DEMO_ACCOUNTS) as UserRole[];
+    for (const r of roles) {
+      if (DEMO_ACCOUNTS[r].email.trim().toLowerCase() === normalized) return r;
+    }
+    return null;
+  };
+
+  const seedDemoProfileIfNeeded = async (uid: string, role: UserRole, email: string) => {
+    const name = DEMO_ACCOUNTS[role].name;
+    const profileRef = doc(db, "users", uid);
+    const snap = await getDoc(profileRef);
+
+    const shouldUpsert =
+      !snap.exists() ||
+      snap.data()?.profileCompleted !== true ||
+      snap.data()?.role !== role;
+
+    if (shouldUpsert) {
+      const demoProfile = buildDemoProfile(uid, role, email, name);
+      await setDoc(profileRef, demoProfile);
+
+      if (role === "hospital") {
+        await setDoc(doc(db, "hospitals", uid), {
+          uid,
+          name,
+          city: "Hyderabad",
+          address: "Demo Address, Hyderabad",
+          verified: false,
+          createdAt: new Date().toISOString(),
+        });
+      }
+    } else if (role === "hospital") {
+      // Ensure the hospital document exists for hospital demo users.
+      const hospRef = doc(db, "hospitals", uid);
+      const hospSnap = await getDoc(hospRef);
+      if (!hospSnap.exists()) {
+        await setDoc(hospRef, {
+          uid,
+          name,
+          city: "Hyderabad",
+          address: "Demo Address, Hyderabad",
+          verified: false,
+          createdAt: new Date().toISOString(),
+        });
+      }
     }
   };
 
@@ -114,11 +165,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const loginWithEmail = async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email, password);
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    const demoRole = getDemoRoleByEmail(email);
+    if (demoRole) {
+      await seedDemoProfileIfNeeded(cred.user.uid, demoRole, email);
+      await fetchProfile(cred.user);
+    }
   };
 
   const registerWithEmail = async (email: string, password: string) => {
-    await createUserWithEmailAndPassword(auth, email, password);
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    const demoRole = getDemoRoleByEmail(email);
+    if (demoRole) {
+      await seedDemoProfileIfNeeded(cred.user.uid, demoRole, email);
+      await fetchProfile(cred.user);
+    }
   };
 
   const loginWithGoogle = async () => {
@@ -152,22 +213,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       cred = await createUserWithEmailAndPassword(auth, email, password);
     }
 
-    const profileRef = doc(db, "users", cred.user.uid);
-    const snap = await getDoc(profileRef);
-    if (!snap.exists()) {
-      const demoProfile = buildDemoProfile(cred.user.uid, role, email, name);
-      await setDoc(profileRef, demoProfile);
-      if (role === "hospital") {
-        await setDoc(doc(db, "hospitals", cred.user.uid), {
-          uid: cred.user.uid,
-          name,
-          city: "Hyderabad",
-          address: "Demo Address, Hyderabad",
-          verified: false,
-          createdAt: new Date().toISOString(),
-        });
-      }
-    }
+    await seedDemoProfileIfNeeded(cred.user.uid, role, email);
+    await fetchProfile(cred.user);
   };
 
   const logout = async () => {
@@ -184,9 +231,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const protectedData = { ...data };
 
     if (existing && existing.role && data.role && existing.role !== data.role) {
-      if (!ADMIN_EMAILS.includes(user.email || "")) {
-        delete protectedData.role;
-      }
+      const isAdminEmail = ADMIN_EMAILS.includes(user.email || "");
+      // Allow role changes during initial onboarding (e.g., Google login default role -> chosen role in Profile Setup).
+      // After profile completion, restrict role changes to admin accounts.
+      const canChangeRole = !existing.profileCompleted || isAdminEmail;
+      if (!canChangeRole) delete protectedData.role;
     }
 
     await setDoc(doc(db, "users", user.uid), protectedData, { merge: true });

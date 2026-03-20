@@ -1,15 +1,28 @@
-import { useState, useEffect } from "react";
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, query } from "firebase/firestore";
+import { useState, useEffect, type FormEvent } from "react";
+import {
+  addDoc,
+  collection,
+  onSnapshot,
+  doc,
+  updateDoc,
+  deleteDoc,
+  query,
+  serverTimestamp,
+} from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth, type UserProfile } from "@/contexts/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useNavigate } from "react-router-dom";
 import {
   Shield, Users, Droplets, Activity, BarChart3, Trash2,
-  UserX, CheckCircle2, Building2, TrendingUp, Clock, ShieldCheck,
+  User, UserX, CheckCircle2, Building2, TrendingUp, Clock, ShieldCheck, Bell,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import ProfileDetails from "@/components/ProfileDetails";
 import { toast } from "sonner";
 
 interface BloodRequest {
@@ -36,7 +49,7 @@ interface Donation {
 }
 
 const STATUS_COLOR: Record<string, string> = {
-  active:    "bg-blue-500/10 text-blue-600",
+  open:      "bg-blue-500/10 text-blue-600",
   accepted:  "bg-yellow-500/10 text-yellow-700",
   completed: "bg-green-500/10 text-green-700",
   verified:  "bg-emerald-500/10 text-emerald-700",
@@ -44,14 +57,28 @@ const STATUS_COLOR: Record<string, string> = {
 
 export default function AdminDashboard() {
   const { profile } = useAuth();
-  const [tab, setTab] = useState<"overview" | "users" | "requests" | "analytics">("overview");
+  const navigate = useNavigate();
+  const [tab, setTab] = useState<
+    "profile" | "overview" | "notifications" | "users" | "requests" | "analytics"
+  >("overview");
   const [users, setUsers]       = useState<UserProfile[]>([]);
   const [requests, setRequests] = useState<BloodRequest[]>([]);
   const [donations, setDonations] = useState<Donation[]>([]);
 
+  // Admin -> send notification panel
+  const [sendingNotification, setSendingNotification] = useState(false);
+  const [notifUserId, setNotifUserId] = useState("");
+  const [notifType, setNotifType] = useState("admin_alert");
+  const [notifPriority, setNotifPriority] = useState<"low" | "high" | "critical">("high");
+  const [notifMessage, setNotifMessage] = useState("");
+  const [notifBloodGroup, setNotifBloodGroup] = useState("");
+  const [notifLocation, setNotifLocation] = useState("");
+  const [notifPhone, setNotifPhone] = useState("");
+  const [notifSendToAll, setNotifSendToAll] = useState(false);
+
   useEffect(() => {
     const unsub1 = onSnapshot(collection(db, "users"), (snap) => {
-      setUsers(snap.docs.map((d) => d.data() as UserProfile));
+      setUsers(snap.docs.map((d) => ({ ...d.data(), uid: (d.data() as any)?.uid ?? d.id } as UserProfile)));
     });
     const unsub2 = onSnapshot(collection(db, "blood_requests"), (snap) => {
       setRequests(snap.docs.map((d) => ({ id: d.id, ...d.data() } as BloodRequest)));
@@ -67,13 +94,58 @@ export default function AdminDashboard() {
     toast.success("User deactivated");
   };
 
+  const sendAdminNotification = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!notifSendToAll && !notifUserId) return toast.error("Select a user or enable Send to All");
+    if (!notifMessage.trim()) return toast.error("Enter a message");
+
+    setSendingNotification(true);
+    try {
+      const buildData = (userId: string): Record<string, unknown> => {
+        const data: Record<string, unknown> = {
+          userId,
+          type: notifType,
+          message: notifMessage.trim(),
+          read: false,
+          priority: notifPriority,
+          createdAt: serverTimestamp(),
+        };
+        if (notifBloodGroup.trim()) data.bloodGroup = notifBloodGroup.trim();
+        if (notifLocation.trim()) data.location = notifLocation.trim();
+        if (notifPhone.trim()) data.phone = notifPhone.trim();
+        return data;
+      };
+
+      if (notifSendToAll) {
+        const targetUsers = users.filter((u) => u.uid && u.role !== "admin");
+        if (targetUsers.length === 0) {
+          toast.error("No users to notify");
+          return;
+        }
+        await Promise.all(targetUsers.map((u) => addDoc(collection(db, "notifications"), buildData(u.uid))));
+        toast.success(`Notification sent to ${targetUsers.length} users`);
+      } else {
+        await addDoc(collection(db, "notifications"), buildData(notifUserId));
+        toast.success("Notification sent");
+      }
+      setNotifMessage("");
+      setNotifBloodGroup("");
+      setNotifLocation("");
+      setNotifPhone("");
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to send notification");
+    } finally {
+      setSendingNotification(false);
+    }
+  };
+
   const deleteRequest = async (id: string) => {
     await deleteDoc(doc(db, "blood_requests", id));
     toast.success("Request deleted");
   };
 
   // Workflow funnel summary
-  const activeCount   = requests.filter((r) => r.status === "active").length;
+  const activeCount   = requests.filter((r) => r.status === "open").length;
   const acceptedCount = requests.filter((r) => r.status === "accepted").length;
   const completedCount = requests.filter((r) => r.status === "completed").length;
   const verifiedCount = requests.filter((r) => r.status === "verified").length;
@@ -86,7 +158,9 @@ export default function AdminDashboard() {
   ];
 
   const tabs = [
+    { key: "profile", label: "Profile", icon: User },
     { key: "overview",   label: "Overview",   icon: Activity },
+    { key: "notifications", label: "Notifications", icon: Bell },
     { key: "users",      label: "Users",      icon: Users },
     { key: "requests",   label: "Requests",   icon: Droplets },
     { key: "analytics",  label: "Analytics",  icon: BarChart3 },
@@ -136,6 +210,11 @@ export default function AdminDashboard() {
               transition={{ duration: 0.15 }}
             >
 
+              {/* === Profile === */}
+              {tab === "profile" && (
+                <ProfileDetails profile={profile} onEdit={() => navigate("/profile-setup")} />
+              )}
+
               {/* === Overview === */}
               {tab === "overview" && (
                 <div className="space-y-6">
@@ -165,7 +244,7 @@ export default function AdminDashboard() {
                     </h3>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                       {[
-                        { label: "Active",    count: activeCount,    color: "bg-blue-500",    desc: "Awaiting donor" },
+                        { label: "Open",      count: activeCount,    color: "bg-blue-500",    desc: "Awaiting donor" },
                         { label: "Accepted",  count: acceptedCount,  color: "bg-amber-500",   desc: "Donor assigned" },
                         { label: "Completed", count: completedCount, color: "bg-green-500",   desc: "Donation done" },
                         { label: "Verified",  count: verifiedCount,  color: "bg-emerald-600", desc: "Hospital verified" },
@@ -206,6 +285,125 @@ export default function AdminDashboard() {
                         ))}
                       </div>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* === Notifications (Admin Sender) === */}
+              {tab === "notifications" && (
+                <div className="space-y-6">
+                  <div className="bg-card rounded-2xl p-6 shadow-sm border border-border">
+                    <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
+                      <Bell className="h-4 w-4 text-primary" />
+                      Send Notification
+                    </h3>
+
+                    <form onSubmit={sendAdminNotification} className="space-y-4">
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium">User</Label>
+                          <select
+                            value={notifUserId}
+                            onChange={(e) => setNotifUserId(e.target.value)}
+                            className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm"
+                            required={!notifSendToAll}
+                            disabled={notifSendToAll}
+                          >
+                            <option value="">Select user</option>
+                            {users.filter((u) => u.role !== "admin").map((u) => (
+                              <option key={u.uid} value={u.uid}>
+                                {u.name} ({u.role})
+                              </option>
+                            ))}
+                          </select>
+                          <label className="flex items-center gap-2 cursor-pointer text-sm">
+                            <input
+                              type="checkbox"
+                              checked={notifSendToAll}
+                              onChange={(e) => setNotifSendToAll(e.target.checked)}
+                              className="rounded accent-primary"
+                            />
+                            Send to all users
+                          </label>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium">Priority</Label>
+                          <select
+                            value={notifPriority}
+                            onChange={(e) => setNotifPriority(e.target.value as any)}
+                            className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm"
+                          >
+                            <option value="low">Low</option>
+                            <option value="high">High</option>
+                            <option value="critical">Critical</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Type</Label>
+                        <select
+                          value={notifType}
+                          onChange={(e) => setNotifType(e.target.value)}
+                          className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm"
+                        >
+                          <option value="admin_alert">Admin Alert</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Message</Label>
+                        <textarea
+                          value={notifMessage}
+                          onChange={(e) => setNotifMessage(e.target.value)}
+                          required
+                          rows={3}
+                          className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary/30"
+                          placeholder="Write a notification message..."
+                        />
+                      </div>
+
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium">Blood Group (optional)</Label>
+                          <Input
+                            value={notifBloodGroup}
+                            onChange={(e) => setNotifBloodGroup(e.target.value)}
+                            placeholder="e.g., A+"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-sm font-medium">Location (optional)</Label>
+                          <Input
+                            value={notifLocation}
+                            onChange={(e) => setNotifLocation(e.target.value)}
+                            placeholder="e.g., Hyderabad"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Phone (optional)</Label>
+                        <Input
+                          value={notifPhone}
+                          onChange={(e) => setNotifPhone(e.target.value)}
+                          placeholder="Contact number"
+                        />
+                      </div>
+
+                      <Button
+                        type="submit"
+                        disabled={sendingNotification}
+                        className="w-full gradient-primary text-primary-foreground shadow-primary"
+                      >
+                        {sendingNotification ? "Sending..." : "Send Notification"}
+                      </Button>
+                    </form>
+                  </div>
+
+                  <div className="bg-muted/30 border border-border rounded-2xl p-4 text-sm text-muted-foreground">
+                    Tip: After sending, the recipient will see this inside their notification bell (real-time).
                   </div>
                 </div>
               )}
@@ -316,7 +514,7 @@ export default function AdminDashboard() {
                   <div className="bg-card rounded-2xl p-6 shadow-sm border border-border">
                     <h3 className="text-sm font-semibold text-muted-foreground mb-4">Request Workflow Status</h3>
                     {[
-                      { status: "active",    label: "Active (Awaiting Donor)" },
+                      { status: "open",      label: "Open (Awaiting Donor)" },
                       { status: "accepted",  label: "Accepted (Donor Assigned)" },
                       { status: "completed", label: "Completed (Donation Done)" },
                       { status: "verified",  label: "Verified (Hospital Confirmed)" },

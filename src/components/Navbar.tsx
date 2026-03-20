@@ -23,6 +23,11 @@ export default function Navbar() {
     ? `/dashboard/${profile.role}`
     : "/profile-setup";
 
+  const navLinks = NAV_LINKS.filter((l) => {
+    if (l.to === "/donate" && profile?.role && profile.role !== "donor") return false;
+    return true;
+  });
+
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass">
       <div className="container mx-auto flex items-center justify-between h-16 px-4">
@@ -35,7 +40,7 @@ export default function Navbar() {
 
         {/* Desktop nav */}
         <div className="hidden md:flex items-center gap-1">
-          {NAV_LINKS.map((l) => (
+          {navLinks.map((l) => (
             <Link
               key={l.to}
               to={l.to}
@@ -113,7 +118,7 @@ export default function Navbar() {
             className="md:hidden border-t border-border bg-card overflow-hidden"
           >
             <div className="flex flex-col p-4 gap-1">
-              {NAV_LINKS.map((l) => (
+              {navLinks.map((l) => (
                 <Link
                   key={l.to}
                   to={l.to}
@@ -131,6 +136,9 @@ export default function Navbar() {
                         Signed in as <span className="font-medium text-foreground">{profile.name}</span>
                       </div>
                     )}
+                    <div className="px-2">
+                      <NotificationCenter />
+                    </div>
                     <Button
                       size="sm"
                       variant="outline"

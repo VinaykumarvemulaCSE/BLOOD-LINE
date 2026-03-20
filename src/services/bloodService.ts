@@ -12,10 +12,10 @@ import {
   runTransaction,
   getDoc,
   writeBatch,
-  Timestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { toast } from "sonner";
+import { broadcastEmergencyRequest } from "./sosService";
 
 export const createBloodRequest = async (
   profile: any,
@@ -33,7 +33,8 @@ export const createBloodRequest = async (
     bloodGroup: form.bloodGroup,
     units: form.units,
     hospitalLocation: form.hospitalLocation,
-    hospitalUid: form.hospitalUid ?? null,
+    // Normalize empty-string hospitalUid to `null` so Firestore rules can reliably match hospitals.
+    hospitalUid: form.hospitalUid || null,
     status: "open",
     emergency: form.emergency,
     acceptedBy: null,
@@ -50,7 +51,19 @@ export const createBloodRequest = async (
   });
 
   await batch.commit();
-  return requestRef.id;
+  const requestId = requestRef.id;
+
+  if (form.emergency) {
+    broadcastEmergencyRequest(
+      form.bloodGroup,
+      profile.city || "",
+      form.hospitalLocation,
+      profile.phone || "",
+      requestId
+    ).catch((err) => console.error("Emergency broadcast failed:", err));
+  }
+
+  return requestId;
 };
 
 export const subscribeToUserRequests = (userId: string, callback: any) => {
@@ -141,7 +154,7 @@ export const acceptBloodRequest = async (
   }
 };
 
-export const verifyDonation = async (
+export const fulfillRequestFromInventory = async (
   reqId: string,
   hospitalUid: string,
   hospitalName: string
@@ -157,9 +170,89 @@ export const verifyDonation = async (
 
       const reqData = reqSnap.data();
 
+      if (reqData.status !== "open") {
+        throw new Error("Request is no longer available");
+      }
+
+      transaction.update(reqRef, {
+        status: "verified",
+        acceptedBy: hospitalUid,
+        acceptedDonorName: `${hospitalName} (Hospital Inventory)`, 
+        acceptedAt: new Date().toISOString(),
+        verifiedBy: hospitalUid,
+        verifiedByName: hospitalName,
+        verifiedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+      });
+      
+      // Notify receiver
+      if (reqData.createdBy) {
+        const msg = `Your ${reqData.bloodGroup} request was fulfilled directly by ${hospitalName} from their inventory!`;
+        transaction.set(doc(collection(db, "notifications")), {
+          type: "request_fulfilled",
+          message: msg,
+          read: false,
+          priority: "high",
+          requestId: reqId,
+          userId: reqData.createdBy,
+          createdAt: serverTimestamp()
+        });
+      }
+    });
+
+  } catch (error: any) {
+    throw error;
+  }
+};
+
+export const verifyDonation = async (
+  reqId: string,
+  hospitalUid: string,
+  hospitalName: string
+) => {
+  try {
+    const donationsQuery = query(
+      collection(db, "donations"),
+      where("requestId", "==", reqId)
+    );
+    const donationsSnap = await getDocs(donationsQuery);
+    const donationIds = donationsSnap.docs.map((d) => d.id);
+
+    if (donationIds.length === 0) {
+      throw new Error("No donations found for this request. Ensure the donor has marked the donation as complete.");
+    }
+
+    let reqData: { bloodGroup?: string; acceptedBy?: string; createdBy?: string; status?: string };
+    await runTransaction(db, async (transaction) => {
+      const reqRef = doc(db, "blood_requests", reqId);
+      const reqSnap = await transaction.get(reqRef);
+
+      if (!reqSnap.exists()) {
+        throw new Error("Request not found");
+      }
+
+      reqData = reqSnap.data() as any;
+
       if (reqData.status !== "completed") {
         throw new Error("Donation must be marked as completed before verification");
       }
+
+      // READ: Get donor data BEFORE any writes
+      let donorSnap = null;
+      let donorRef = null;
+      if (reqData.acceptedBy) {
+        donorRef = doc(db, "users", reqData.acceptedBy);
+        donorSnap = await transaction.get(donorRef);
+      }
+
+      // WRITE: Update donations first, then blood_request
+      donationIds.forEach((did) => {
+        transaction.update(doc(db, "donations", did), {
+          status: "verified",
+          verifiedAt: new Date().toISOString(),
+          verifiedBy: hospitalUid,
+        });
+      });
 
       transaction.update(reqRef, {
         status: "verified",
@@ -168,24 +261,40 @@ export const verifyDonation = async (
         verifiedAt: new Date().toISOString(),
       });
 
-      const donationsQuery = query(
-        collection(db, "donations"),
-        where("requestId", "==", reqId)
-      );
-      const donationsSnap = await getDocs(donationsQuery);
-
-      donationsSnap.forEach((donationDoc) => {
-        transaction.update(doc(db, "donations", donationDoc.id), {
-          status: "verified",
-          verifiedAt: new Date().toISOString(),
-          verifiedBy: hospitalUid,
-        });
-      });
+      // WRITE: Update donor stats
+      if (donorRef && donorSnap && donorSnap.exists()) {
+        const dData = donorSnap.data();
+        const isDemoDonor = (dData.email || "").trim().toLowerCase() === "test.donor@bloodline.app";
+        if (!isDemoDonor) {
+          transaction.update(donorRef, {
+            lastDonationDate: new Date().toISOString(),
+            donorAvailability: false,
+            reputationScore: (dData.reputationScore || 0) + 10
+          });
+        }
+      }
     });
+
+    // Notify donor and receiver (outside transaction to avoid blocking)
+    const donorId = reqData.acceptedBy;
+    const createdBy = reqData.createdBy;
+    const msg = `${reqData.bloodGroup} donation verified by ${hospitalName}. Thank you!`;
+    const notifBase = { type: "donation_verified", message: msg, read: false, priority: "high" as const, requestId: reqId, createdAt: serverTimestamp() };
+    try {
+      if (donorId) {
+        await addDoc(collection(db, "notifications"), { ...notifBase, userId: donorId });
+      }
+      if (createdBy && createdBy !== donorId) {
+        await addDoc(collection(db, "notifications"), { ...notifBase, userId: createdBy });
+      }
+    } catch (notifErr) {
+      console.warn("Notifications could not be sent:", notifErr);
+    }
 
     toast.success("Donation verified successfully!");
   } catch (error: any) {
-    toast.error(error.message || "Failed to verify donation");
+    const msg = error?.message || error?.code || "Failed to verify donation";
+    toast.error(typeof msg === "string" ? msg : "Failed to verify donation");
     throw error;
   }
 };
@@ -196,6 +305,14 @@ export const completeDonation = async (
   bloodGroup: string
 ) => {
   try {
+    const donationsQuery = query(
+      collection(db, "donations"),
+      where("requestId", "==", reqId),
+      where("donorId", "==", donorId)
+    );
+    const donationsSnap = await getDocs(donationsQuery);
+    const donationIds = donationsSnap.docs.map((d) => d.id);
+
     await runTransaction(db, async (transaction) => {
       const reqRef = doc(db, "blood_requests", reqId);
       const reqSnap = await transaction.get(reqRef);
@@ -219,20 +336,15 @@ export const completeDonation = async (
         completedAt: new Date().toISOString(),
       });
 
-      const donationsQuery = query(
-        collection(db, "donations"),
-        where("requestId", "==", reqId)
-      );
-      const donationsSnap = await getDocs(donationsQuery);
-
-      donationsSnap.forEach((donationDoc) => {
-        transaction.update(doc(db, "donations", donationDoc.id), {
+      donationIds.forEach((did) => {
+        transaction.update(doc(db, "donations", did), {
           status: "completed",
           bloodGroup,
           completedAt: new Date().toISOString(),
         });
       });
     });
+
 
     toast.success("Donation marked as complete! Waiting for hospital verification.");
   } catch (error: any) {
@@ -258,6 +370,14 @@ export const cancelBloodRequest = async (
   reason: string
 ) => {
   try {
+    const donationsQuery = query(
+      collection(db, "donations"),
+      where("requestId", "==", reqId),
+      where("status", "!=", "verified")
+    );
+    const donationsSnap = await getDocs(donationsQuery);
+    const donationIds = donationsSnap.docs.map((d) => d.id);
+
     await runTransaction(db, async (transaction) => {
       const reqRef = doc(db, "blood_requests", reqId);
       const reqSnap = await transaction.get(reqRef);
@@ -282,15 +402,8 @@ export const cancelBloodRequest = async (
         cancelReason: reason,
       });
 
-      const donationsQuery = query(
-        collection(db, "donations"),
-        where("requestId", "==", reqId),
-        where("status", "!=", "verified")
-      );
-      const donationsSnap = await getDocs(donationsQuery);
-
-      donationsSnap.forEach((donationDoc) => {
-        transaction.update(doc(db, "donations", donationDoc.id), {
+      donationIds.forEach((did) => {
+        transaction.update(doc(db, "donations", did), {
           status: "cancelled",
           cancelledAt: new Date().toISOString(),
         });

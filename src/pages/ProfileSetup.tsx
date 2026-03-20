@@ -16,21 +16,23 @@ import { db } from "@/lib/firebase";
 const ADMIN_EMAILS = ["kumarvinay072007@gmail.com", "admin@bloodline.app"];
 
 export default function ProfileSetup() {
-  const { user, updateProfile } = useAuth();
+  const { user, profile, updateProfile } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<"form" | "preview">("form");
+  const isAdminEmail =
+    ADMIN_EMAILS.includes(user?.email || "") || (user?.email || "").toLowerCase() === "test.admin@bloodline.app";
   const [form, setForm] = useState({
-    name: user?.displayName || "",
-    phone: "",
-    bloodGroup: "O+",
-    city: "Hyderabad",
-    address: "",
-    role: "donor" as UserRole,
-    age: 25,
-    weight: 65,
-    healthConfirmed: false,
-    lastDonationDate: "",
+    name: profile?.name || user?.displayName || "",
+    phone: profile?.phone || "",
+    bloodGroup: profile?.bloodGroup || "O+",
+    city: profile?.city || "Hyderabad",
+    address: profile?.address || "",
+    role: profile?.role || ((isAdminEmail ? "admin" : "donor") as UserRole),
+    age: profile?.age || 25,
+    weight: profile?.weight || 65,
+    healthConfirmed: profile?.healthConfirmed || false,
+    lastDonationDate: profile?.lastDonationDate || "",
   });
 
   const set = (key: string, val: any) => setForm((p) => ({ ...p, [key]: val }));
@@ -71,7 +73,7 @@ export default function ProfileSetup() {
     if (!user) return;
     setLoading(true);
     try {
-      const finalRole = ADMIN_EMAILS.includes(user.email || "") ? "admin" : form.role;
+      const finalRole = isAdminEmail ? "admin" : form.role;
 
       await updateProfile({
         uid: user.uid,
@@ -145,25 +147,36 @@ export default function ProfileSetup() {
               <form onSubmit={handlePreview} className="bg-card rounded-2xl shadow-card border border-border p-6 space-y-5">
                 <div>
                   <Label className="text-sm font-semibold">I am a</Label>
-                  <div className="grid grid-cols-3 gap-2 mt-2">
-                    {(["donor", "receiver", "hospital"] as UserRole[]).map((r) => (
-                      <button
-                        type="button"
-                        key={r}
-                        onClick={() => set("role", r)}
-                        className={`py-2.5 px-3 rounded-xl text-sm font-medium border transition-all capitalize ${
-                          form.role === r
-                            ? "bg-primary text-primary-foreground border-primary"
-                            : "bg-muted/50 text-muted-foreground border-border hover:border-primary/30"
-                        }`}
-                      >
-                        {r}
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Admin accounts are assigned by email verification
-                  </p>
+                  {isAdminEmail ? (
+                    <div className="mt-2">
+                      <Badge className="bg-emerald-500/10 text-emerald-700 border border-emerald-500/30 capitalize">admin</Badge>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Admin role is locked for this email.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-3 gap-2 mt-2">
+                        {(["donor", "receiver", "hospital"] as UserRole[]).map((r) => (
+                          <button
+                            type="button"
+                            key={r}
+                            onClick={() => set("role", r)}
+                            className={`py-2.5 px-3 rounded-xl text-sm font-medium border transition-all capitalize ${
+                              form.role === r
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "bg-muted/50 text-muted-foreground border-border hover:border-primary/30"
+                            }`}
+                          >
+                            {r}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Admin accounts are assigned by email verification
+                      </p>
+                    </>
+                  )}
                 </div>
 
                 <div className="grid sm:grid-cols-2 gap-4">

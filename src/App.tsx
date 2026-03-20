@@ -12,6 +12,8 @@ import FindBlood from "@/pages/FindBlood";
 import DonatePage from "@/pages/DonatePage";
 import HospitalsPage from "@/pages/HospitalsPage";
 import AboutPage from "@/pages/AboutPage";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
+import TermsConditions from "@/pages/TermsConditions";
 import DonorDashboard from "@/pages/dashboard/DonorDashboard";
 import ReceiverDashboard from "@/pages/dashboard/ReceiverDashboard";
 import HospitalDashboard from "@/pages/dashboard/HospitalDashboard";
@@ -53,10 +55,11 @@ function LoginRoute() {
   return <Login />;
 }
 
-// SOS button only shown when authenticated
+// SOS: only for receivers (person needing blood urgently; donors give, receivers receive)
 function GlobalSOS() {
-  const { user } = useAuth();
-  return user ? <SOSButton /> : null;
+  const { user, profile } = useAuth();
+  const canUseSOS = user && profile?.profileCompleted && profile.role === "receiver";
+  return canUseSOS ? <SOSButton /> : null;
 }
 
 function AppRoutes() {
@@ -69,6 +72,8 @@ function AppRoutes() {
       <Route path="/donate" element={<DonatePage />} />
       <Route path="/hospitals" element={<HospitalsPage />} />
       <Route path="/about" element={<AboutPage />} />
+      <Route path="/privacy" element={<PrivacyPolicy />} />
+      <Route path="/terms" element={<TermsConditions />} />
       <Route path="/dashboard/donor" element={<AuthGuard requiredRole="donor"><DonorDashboard /></AuthGuard>} />
       <Route path="/dashboard/receiver" element={<AuthGuard requiredRole="receiver"><ReceiverDashboard /></AuthGuard>} />
       <Route path="/dashboard/hospital" element={<AuthGuard requiredRole="hospital"><HospitalDashboard /></AuthGuard>} />
@@ -82,7 +87,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Sonner />
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
         <AuthProvider>
           <AppRoutes />
           <GlobalSOS />

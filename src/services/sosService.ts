@@ -6,13 +6,19 @@ const ADMIN_EMAIL = "kumarvinay072007@gmail.com";
 
 export const sendSOSAlert = async (profile: any, userId: string) => {
   try {
-    const compatibleBloodGroups = COMPATIBILITY[profile.bloodGroup as keyof typeof COMPATIBILITY] || [];
+    const city = (profile.city || "").trim();
+    const bloodGroup = (profile.bloodGroup || "").trim();
+    if (!city || !bloodGroup) {
+      throw new Error("Profile must have city and blood group to send SOS.");
+    }
+
+    const compatibleBloodGroups = COMPATIBILITY[bloodGroup as keyof typeof COMPATIBILITY] || [];
 
     const donorsQuery = query(
       collection(db, "users"),
       where("role", "==", "donor"),
       where("donorAvailability", "==", true),
-      where("city", "==", profile.city)
+      where("city", "==", city)
     );
 
     const donorsSnapshot = await getDocs(donorsQuery);
@@ -23,39 +29,65 @@ export const sendSOSAlert = async (profile: any, userId: string) => {
 
     await addDoc(collection(db, "sos_alerts"), {
       userId,
-      userName: profile.name,
-      userPhone: profile.phone,
-      bloodGroup: profile.bloodGroup,
-      city: profile.city,
+      userName: profile.name || "Unknown",
+      userPhone: profile.phone || "",
+      bloodGroup,
+      city,
       role: profile.role,
       adminEmail: ADMIN_EMAIL,
       status: "pending",
       createdAt: serverTimestamp(),
     });
 
+    if (profile.role === "receiver") {
+      await addDoc(collection(db, "blood_requests"), {
+        clientId: `sos-${Date.now()}`,
+        createdBy: userId,
+        creatorName: profile.name || "Unknown",
+        creatorPhone: profile.phone || "",
+        bloodGroup,
+        units: 1,
+        hospitalLocation: `${city} (Emergency SOS Location Pending)`,
+        hospitalUid: null,
+        status: "open",
+        emergency: true,
+        acceptedBy: null,
+        acceptedAt: null,
+        acceptedDonorName: null,
+        acceptedDonorPhone: null,
+        verifiedBy: null,
+        verifiedByName: null,
+        verifiedAt: null,
+        completedAt: null,
+        cancelledAt: null,
+        cancelReason: null,
+        createdAt: serverTimestamp(),
+      });
+    }
+
     await addDoc(collection(db, "notifications"), {
       type: "sos_emergency",
-      message: `SOS Alert from ${profile.name} (${profile.bloodGroup}) in ${profile.city}. Phone: ${profile.phone}`,
+      message: `SOS Alert from ${profile.name || "User"} (${bloodGroup}) in ${city}. Phone: ${profile.phone || "—"}`,
       adminEmail: ADMIN_EMAIL,
       userId,
       read: false,
       priority: "critical",
-      bloodGroup: profile.bloodGroup,
-      location: profile.city,
-      phone: profile.phone,
+      bloodGroup,
+      location: city,
+      phone: profile.phone || "",
       createdAt: serverTimestamp(),
     });
 
     const notificationPromises = compatibleDonors.map((donorDoc) => {
       return addDoc(collection(db, "notifications"), {
         type: "sos_alert",
-        message: `EMERGENCY: ${profile.bloodGroup} blood needed urgently in ${profile.city}. Contact: ${profile.phone}`,
+        message: `EMERGENCY: ${bloodGroup} blood needed urgently in ${city}. Contact: ${profile.phone || "—"}`,
         userId: donorDoc.id,
         read: false,
         priority: "high",
-        bloodGroup: profile.bloodGroup,
-        location: profile.city,
-        phone: profile.phone,
+        bloodGroup,
+        location: city,
+        phone: profile.phone || "",
         createdAt: serverTimestamp(),
       });
     });

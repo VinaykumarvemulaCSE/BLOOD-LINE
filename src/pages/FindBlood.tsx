@@ -24,7 +24,7 @@ export default function FindBlood() {
   const [filter, setFilter] = useState("");
 
   useEffect(() => {
-    const q = query(collection(db, "blood_requests"), where("status", "==", "active"));
+    const q = query(collection(db, "blood_requests"), where("status", "==", "open"));
     const unsub = onSnapshot(q, (snap) => {
       setRequests(snap.docs.map((d) => ({ id: d.id, ...d.data() } as BloodRequest)));
     });

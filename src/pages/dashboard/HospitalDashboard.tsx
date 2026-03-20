@@ -6,20 +6,25 @@ import {
   doc,
   setDoc,
   where,
+  addDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/contexts/AuthContext";
 import { BLOOD_GROUPS } from "@/lib/bloodCompatibility";
-import { verifyDonation } from "@/services/bloodService";
+import { verifyDonation, fulfillRequestFromInventory } from "@/services/bloodService";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { useNavigate } from "react-router-dom";
 import {
   Building2, Package, Droplets, Activity,
   Plus, Minus, MessageSquare, CheckCircle2,
-  Clock, AlertTriangle, User, ShieldCheck,
+  Clock, AlertTriangle, User, ShieldCheck, Send, Loader2,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import ProfileDetails from "@/components/ProfileDetails";
 import { toast } from "sonner";
 
 interface Inventory {
@@ -31,18 +36,31 @@ interface BloodRequest {
   bloodGroup: string;
   units: number;
   hospitalLocation: string;
+  createdBy?: string;
+  creatorName?: string;
   hospitalUid?: string;
   status: string;
   emergency: boolean;
   createdAt?: any;
-  creatorName?: string;
   acceptedBy?: string;
+  acceptedDonorName?: string;
   verifiedBy?: string;
   verifiedAt?: string;
 }
 
+interface Message {
+  id: string;
+  requestId: string;
+  senderId: string;
+  senderRole?: string;
+  senderName?: string;
+  participants: string[];
+  message: string;
+  timestamp?: any;
+}
+
 const STATUS_COLOR: Record<string, string> = {
-  active:    "bg-blue-500/10 text-blue-600",
+  open:      "bg-blue-500/10 text-blue-600",
   accepted:  "bg-yellow-500/10 text-yellow-700",
   completed: "bg-green-500/10 text-green-700",
   verified:  "bg-emerald-500/10 text-emerald-700",
@@ -50,10 +68,15 @@ const STATUS_COLOR: Record<string, string> = {
 
 export default function HospitalDashboard() {
   const { profile } = useAuth();
-  const [tab, setTab] = useState<"inventory" | "requests" | "verify" | "messages">("inventory");
+  const navigate = useNavigate();
+  const [tab, setTab] = useState<"profile" | "inventory" | "requests" | "verify" | "messages">("inventory");
   const [inventory, setInventory] = useState<Inventory>({});
   const [allRequests, setAllRequests] = useState<BloodRequest[]>([]);
   const [verifying, setVerifying] = useState<string | null>(null);
+  const [fulfilling, setFulfilling] = useState<string | null>(null);
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
+  const [threadMessages, setThreadMessages] = useState<Message[]>([]);
+  const [newMessage, setNewMessage] = useState("");
 
   // Load/init inventory for this hospital
   useEffect(() => {
@@ -80,11 +103,48 @@ export default function HospitalDashboard() {
     return unsub;
   }, []);
 
-  // Requests pending hospital verification (accepted + matching this hospital)
+  // Requests pending hospital verification (completed + matching this hospital)
   const pendingVerification = allRequests.filter(
-    (r) => r.status === "accepted" && (r.hospitalUid === profile?.uid || !r.hospitalUid)
+    (r) => r.status === "completed" && (r.hospitalUid === profile?.uid || !r.hospitalUid)
   );
   const alreadyVerified = allRequests.filter((r) => r.verifiedBy === profile?.uid);
+  const messagingRequests = Array.from(
+    new Map([...pendingVerification, ...alreadyVerified].map((r) => [r.id, r])).values()
+  );
+
+  // Auto-select a request thread when switching to Messages tab
+  useEffect(() => {
+    if (!profile) return;
+    if (tab !== "messages") return;
+    if (!selectedRequestId && messagingRequests.length > 0) {
+      setSelectedRequestId(messagingRequests[0].id);
+    }
+  }, [profile, tab, selectedRequestId, messagingRequests]);
+
+  // Subscribe to request-scoped messages
+  useEffect(() => {
+    if (!profile || !selectedRequestId) return;
+
+    const qMessages = query(
+      collection(db, "messages"),
+      where("requestId", "==", selectedRequestId),
+    );
+
+    return onSnapshot(qMessages, (snap) => {
+      const mapped = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Message));
+      // Avoid Firestore `orderBy` index requirements; sort locally instead.
+      const toMs = (t: any) => {
+        if (!t) return 0;
+        if (typeof t?.toDate === "function") return t.toDate().getTime();
+        if (t instanceof Date) return t.getTime();
+        if (typeof t === "string") return new Date(t).getTime();
+        if (typeof t === "number") return t;
+        return 0;
+      };
+      mapped.sort((a, b) => toMs(a.timestamp) - toMs(b.timestamp));
+      setThreadMessages(mapped);
+    });
+  }, [profile, selectedRequestId]);
 
   const updateUnit = async (bg: string, delta: number) => {
     if (!profile) return;
@@ -94,23 +154,69 @@ export default function HospitalDashboard() {
     toast.success(`${bg} updated to ${newVal} units`);
   };
 
-  const handleVerify = async (req: BloodRequest) => {
+  const handleFulfill = async (req: BloodRequest) => {
     if (!profile) return;
-    setVerifying(req.id);
+    setFulfilling(req.id);
     try {
-      await verifyDonation(req.id, profile.uid, profile.name);
-      // Deduct from inventory
+      await fulfillRequestFromInventory(req.id, profile.uid, profile.name);
+      
       const newVal = Math.max(0, (inventory[req.bloodGroup] || 0) - req.units);
       await setDoc(doc(db, "hospital_inventory", profile.uid), {
         ...inventory,
         [req.bloodGroup]: newVal,
       });
-      toast.success(`Donation verified! ${req.bloodGroup} inventory updated.`);
+
+      toast.success(`Request fulfilled! ${req.units} units deducted from inventory.`);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || "Failed to fulfill request.");
+    } finally {
+      setFulfilling(null);
+    }
+  };
+
+  const handleVerify = async (req: BloodRequest) => {
+    if (!profile) return;
+    setVerifying(req.id);
+    try {
+      await verifyDonation(req.id, profile.uid, profile.name);
+      toast.success("Donation verified successfully!");
     } catch (err) {
       console.error(err);
       toast.error("Failed to verify donation.");
     } finally {
       setVerifying(null);
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!profile || !selectedRequestId || !newMessage.trim()) return;
+    const req = messagingRequests.find((r) => r.id === selectedRequestId);
+    if (!req) return;
+
+    const hospitalParticipant = req.hospitalUid || req.verifiedBy || profile.uid;
+    const participants = Array.from(
+      new Set(
+        [req.createdBy || profile.uid, req.acceptedBy || null, hospitalParticipant, profile.uid].filter(
+          (x): x is string => typeof x === "string" && x.length > 0
+        )
+      )
+    );
+
+    try {
+      await addDoc(collection(db, "messages"), {
+        requestId: selectedRequestId,
+        participants,
+        senderId: profile.uid,
+        senderRole: profile.role,
+        senderName: profile.name,
+        message: newMessage.trim(),
+        timestamp: serverTimestamp(),
+      });
+      setNewMessage("");
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      toast.error("Failed to send message");
     }
   };
 
@@ -122,6 +228,7 @@ export default function HospitalDashboard() {
   };
 
   const tabs = [
+    { key: "profile", label: "Profile", icon: User },
     { key: "inventory", label: "Inventory",    icon: Package },
     { key: "requests",  label: "All Requests", icon: Droplets },
     { key: "verify",    label: `Verify Donations${pendingVerification.length ? ` (${pendingVerification.length})` : ""}`, icon: ShieldCheck },
@@ -171,6 +278,11 @@ export default function HospitalDashboard() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.15 }}
             >
+
+              {/* Profile Tab */}
+              {tab === "profile" && (
+                <ProfileDetails profile={profile} onEdit={() => navigate("/profile-setup")} />
+              )}
 
               {/* Inventory Tab */}
               {tab === "inventory" && (
@@ -224,11 +336,29 @@ export default function HospitalDashboard() {
                           <p className="text-sm text-muted-foreground">{req.hospitalLocation} • {req.units} units</p>
                           {req.creatorName && <p className="text-xs text-muted-foreground mt-1">By: {req.creatorName}</p>}
                         </div>
-                        {req.verifiedBy === profile.uid && (
-                          <div className="flex items-center gap-1 text-xs text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
-                            <CheckCircle2 className="h-3 w-3" /> Verified by you
-                          </div>
-                        )}
+                        <div className="flex flex-col items-end gap-2">
+                          {req.status === "open" && (
+                            <>
+                              <Button
+                                size="sm"
+                                onClick={() => handleFulfill(req)}
+                                disabled={fulfilling === req.id || (inventory[req.bloodGroup] || 0) < req.units}
+                                className="shrink-0 gradient-primary text-primary-foreground shadow-primary gap-1.5"
+                              >
+                                {fulfilling === req.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Package className="h-4 w-4" />}
+                                {fulfilling === req.id ? "Fulfilling..." : "Fulfill from Stock"}
+                              </Button>
+                              {(inventory[req.bloodGroup] || 0) < req.units && (
+                                <span className="text-[10px] text-destructive font-medium">Insufficient {req.bloodGroup} stock</span>
+                              )}
+                            </>
+                          )}
+                          {req.verifiedBy === profile.uid && (
+                            <div className="flex items-center gap-1 text-xs text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">
+                              <CheckCircle2 className="h-3 w-3" /> Verified by you
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -278,7 +408,7 @@ export default function HospitalDashboard() {
                                   {req.createdAt?.toDate?.()?.toLocaleDateString() ?? "—"}
                                 </p>
                                 <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/50 rounded-lg px-2 py-1 w-fit">
-                                  <User className="h-3 w-3" /> Donor has accepted this request — verify the donation below
+                                  <User className="h-3 w-3" /> Donation completed — verify the request below
                                 </div>
                               </div>
                               <Button
@@ -286,7 +416,7 @@ export default function HospitalDashboard() {
                                 disabled={verifying === req.id}
                                 className="shrink-0 bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
                               >
-                                <ShieldCheck className="h-4 w-4" />
+                                {verifying === req.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
                                 {verifying === req.id ? "Verifying..." : "Verify Donation"}
                               </Button>
                             </div>
@@ -323,12 +453,78 @@ export default function HospitalDashboard() {
               )}
 
               {/* Messages Tab */}
-              {tab === "messages" && (
-                <div className="bg-card rounded-2xl p-12 shadow-sm border border-border text-center">
-                  <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
-                  <p className="text-muted-foreground">Messages will appear here</p>
+              {tab === "messages" && (() => {
+                const selectedReq = messagingRequests.find((r) => r.id === selectedRequestId);
+                const getBubbleClass = (m: Message) => {
+                  if (m.senderId === profile.uid) return "bg-primary text-primary-foreground ml-auto rounded-tr-none";
+                  const role = m.senderRole || "";
+                  if (role === "donor") return "bg-blue-100 text-blue-900 border border-blue-200 mr-auto rounded-tl-none";
+                  if (role === "hospital") return "bg-emerald-100 text-emerald-900 border border-emerald-200 mr-auto rounded-tl-none";
+                  if (role === "receiver") return "bg-pink-100 text-pink-900 border border-pink-200 mr-auto rounded-tl-none";
+                  return "bg-muted text-foreground mr-auto rounded-tl-none";
+                };
+                return (
+                <div className="bg-card rounded-2xl shadow-sm border border-border flex flex-col h-[500px] overflow-hidden">
+                  <div className="p-4 border-b border-border bg-muted/30">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between gap-4">
+                        <h3 className="font-semibold text-sm">Request Messaging</h3>
+                        <select
+                          value={selectedRequestId || ""}
+                          onChange={(e) => setSelectedRequestId(e.target.value)}
+                          className="text-sm rounded-lg border border-border bg-background px-3 py-1.5"
+                          disabled={messagingRequests.length === 0}
+                        >
+                          {messagingRequests.length === 0 ? (
+                            <option value="">No requests</option>
+                          ) : (
+                            messagingRequests.map((r) => (
+                              <option key={r.id} value={r.id}>
+                                {r.bloodGroup} • {r.units} units • {r.status}
+                              </option>
+                            ))
+                          )}
+                        </select>
+                      </div>
+                      {selectedReq && (
+                        <p className="text-xs text-muted-foreground">
+                          Chat with: <span className="text-pink-600 font-medium">{selectedReq.creatorName || "Receiver"}</span>
+                          , <span className="text-blue-600 font-medium">{selectedReq.acceptedDonorName || "Donor"}</span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                    {threadMessages.length === 0 ? (
+                      <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                        No messages for this request yet.
+                      </div>
+                    ) : (
+                      threadMessages.map((m) => (
+                        <div key={m.id} className={`max-w-[80%] rounded-2xl p-3 text-sm ${getBubbleClass(m)}`}>
+                          <span className="text-[10px] font-medium opacity-80 block mb-0.5">{m.senderName || m.senderRole || "Unknown"}</span>
+                          {m.message}
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="p-4 border-t border-border bg-background flex gap-2">
+                    <Input
+                      placeholder="Type a message..."
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                      className="bg-muted/50 border-none focus-visible:ring-1"
+                    />
+                    <Button onClick={sendMessage} size="icon" className="shrink-0 rounded-xl">
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-              )}
+                );
+              })()}
 
             </motion.div>
           </AnimatePresence>

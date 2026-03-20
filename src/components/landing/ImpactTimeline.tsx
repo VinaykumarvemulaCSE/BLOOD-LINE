@@ -2,10 +2,10 @@ import { motion } from "framer-motion";
 import { FileText, UserCheck, Building2, CheckCircle2 } from "lucide-react";
 
 const steps = [
-  { icon: FileText, label: "Request Created", desc: "Receiver posts urgent blood need" },
-  { icon: UserCheck, label: "Donor Accepts", desc: "Matching donor responds to alert" },
-  { icon: Building2, label: "Hospital Confirms", desc: "Hospital verifies and prepares" },
-  { icon: CheckCircle2, label: "Donation Complete", desc: "Life saved through donation" },
+  { icon: FileText, label: "Request Created", desc: "Receiver posts urgent blood need (Open)" },
+  { icon: UserCheck, label: "Donor Accepts", desc: "Matching donor accepts the request (Accepted)" },
+  { icon: CheckCircle2, label: "Donation Completed", desc: "Donor marks donation done (Completed)" },
+  { icon: Building2, label: "Hospital Verified", desc: "Hospital confirms donation (Verified)" },
 ];
 
 export default function ImpactTimeline() {

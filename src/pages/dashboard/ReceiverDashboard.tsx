@@ -6,17 +6,21 @@ import {
   type HospitalEntry,
 } from "@/services/bloodService";
 import { useAuth } from "@/contexts/AuthContext";
+import { db } from "@/lib/firebase";
 import { BLOOD_GROUPS } from "@/lib/bloodCompatibility";
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp } from "firebase/firestore";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { useNavigate } from "react-router-dom";
 import {
   Droplets, Plus, MapPin, MessageSquare,
-  Clock, AlertTriangle, User, CheckCircle2, Building2,
+  Clock, AlertTriangle, User, CheckCircle2, Building2, Send,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import ProfileDetails from "@/components/ProfileDetails";
 import { toast } from "sonner";
 
 interface BloodRequest {
@@ -27,13 +31,30 @@ interface BloodRequest {
   status: string;
   emergency: boolean;
   createdAt?: any;
+  // Used for request-scoped messaging
+  createdBy?: string;
+  creatorName?: string;
+  hospitalUid?: string | null;
   acceptedBy?: string;
+  acceptedDonorName?: string;
+  verifiedBy?: string | null;
   verifiedAt?: string;
   verifiedByName?: string;
 }
 
+interface Message {
+  id: string;
+  requestId: string;
+  senderId: string;
+  senderRole?: string;
+  senderName?: string;
+  participants: string[];
+  message: string;
+  timestamp?: any;
+}
+
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
-  active:    { label: "Active",    color: "bg-blue-500/10 text-blue-600" },
+  open:      { label: "Open",      color: "bg-blue-500/10 text-blue-600" },
   accepted:  { label: "Accepted",  color: "bg-yellow-500/10 text-yellow-600" },
   completed: { label: "Completed", color: "bg-green-500/10 text-green-600" },
   verified:  { label: "Verified ✓", color: "bg-emerald-500/10 text-emerald-600" },
@@ -41,11 +62,15 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
 
 export default function ReceiverDashboard() {
   const { profile } = useAuth();
+  const navigate = useNavigate();
 
-  const [tab, setTab] = useState<"requests" | "create" | "messages">("requests");
+  const [tab, setTab] = useState<"overview" | "profile" | "requests" | "create" | "messages">("overview");
   const [requests, setRequests] = useState<BloodRequest[]>([]);
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
+  const [threadMessages, setThreadMessages] = useState<Message[]>([]);
   const [hospitals, setHospitals] = useState<HospitalEntry[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [newMessage, setNewMessage] = useState("");
   const [form, setForm] = useState({
     bloodGroup: "O+",
     units: 1,
@@ -73,6 +98,40 @@ export default function ReceiverDashboard() {
     const unsub = subscribeToHospitals(setHospitals);
     return () => unsub?.();
   }, []);
+
+  // Auto-select a request thread when switching to Messages tab
+  useEffect(() => {
+    if (!profile) return;
+    if (tab !== "messages") return;
+    if (!selectedRequestId && requests.length > 0) {
+      setSelectedRequestId(requests[0].id);
+    }
+  }, [profile, tab, selectedRequestId, requests]);
+
+  // Subscribe to request-scoped messages
+  useEffect(() => {
+    if (!profile || !selectedRequestId) return;
+
+    const qMessages = query(
+      collection(db, "messages"),
+      where("requestId", "==", selectedRequestId),
+    );
+
+    return onSnapshot(qMessages, (snap) => {
+      const mapped = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Message));
+      // Avoid Firestore `orderBy` index requirements; sort locally instead.
+      const toMs = (t: any) => {
+        if (!t) return 0;
+        if (typeof t?.toDate === "function") return t.toDate().getTime();
+        if (t instanceof Date) return t.getTime();
+        if (typeof t === "string") return new Date(t).getTime();
+        if (typeof t === "number") return t;
+        return 0;
+      };
+      mapped.sort((a, b) => toMs(a.timestamp) - toMs(b.timestamp));
+      setThreadMessages(mapped);
+    });
+  }, [profile, selectedRequestId]);
 
   const createRequest = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,6 +161,39 @@ export default function ReceiverDashboard() {
     }
   };
 
+  const sendMessage = async () => {
+    if (!profile || !selectedRequestId || !newMessage.trim()) return;
+
+    const req = requests.find((r) => r.id === selectedRequestId);
+    if (!req) return;
+
+    const hospitalParticipant = req.hospitalUid || req.verifiedBy || null;
+
+    const participants = Array.from(
+      new Set(
+        [profile.uid, req.createdBy || profile.uid, req.acceptedBy || null, hospitalParticipant].filter(
+          (x): x is string => typeof x === "string" && x.length > 0
+        )
+      )
+    );
+
+    try {
+      await addDoc(collection(db, "messages"), {
+        requestId: selectedRequestId,
+        participants,
+        senderId: profile.uid,
+        senderRole: profile.role,
+        senderName: profile.name,
+        message: newMessage.trim(),
+        timestamp: serverTimestamp(),
+      });
+      setNewMessage("");
+    } catch (err) {
+      console.error("Failed to send message:", err);
+      toast.error("Failed to send message");
+    }
+  };
+
   const handleHospitalSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const uid = e.target.value;
     const hospital = hospitals.find((h) => h.uid === uid);
@@ -113,6 +205,8 @@ export default function ReceiverDashboard() {
   };
 
   const tabs = [
+    { key: "overview", label: "Overview", icon: User },
+    { key: "profile", label: "Profile", icon: User },
     { key: "requests", label: "My Requests", icon: Droplets },
     { key: "create",   label: "New Request", icon: Plus },
     { key: "messages", label: "Messages",    icon: MessageSquare },
@@ -162,6 +256,77 @@ export default function ReceiverDashboard() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.15 }}
             >
+
+              {tab === "overview" && (
+                <div className="space-y-4">
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="bg-card rounded-2xl p-6 shadow-sm border border-border">
+                      <h3 className="text-sm font-semibold text-muted-foreground mb-3">Patient Health</h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between border-b border-border/50 pb-2">
+                          <span className="text-muted-foreground">Age</span>
+                          <span className="font-semibold">{profile.age ?? "—"}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-border/50 pb-2">
+                          <span className="text-muted-foreground">Weight</span>
+                          <span className="font-semibold">{profile.weight ? `${profile.weight} kg` : "—"}</span>
+                        </div>
+                        <div className="flex justify-between pt-1">
+                          <span className="text-muted-foreground">Health Status</span>
+                          <span className="font-semibold">
+                            {profile.healthConfirmed ? "Verified" : "Not verified"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-card rounded-2xl p-6 shadow-sm border border-border">
+                      <h3 className="text-sm font-semibold text-muted-foreground mb-3">Request Details</h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between border-b border-border/50 pb-2">
+                          <span className="text-muted-foreground">Blood Group</span>
+                          <span className="font-semibold">{profile.bloodGroup}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-border/50 pb-2">
+                          <span className="text-muted-foreground">City</span>
+                          <span className="font-semibold">{profile.city || "—"}</span>
+                        </div>
+                        <div className="flex justify-between pt-1">
+                          <span className="text-muted-foreground">Address</span>
+                          <span className="font-semibold">{profile.address || "—"}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-card rounded-2xl p-6 shadow-sm border border-border">
+                      <h3 className="text-sm font-semibold text-muted-foreground mb-3">Next Steps</h3>
+                      <div className="space-y-3">
+                        <Button
+                          className="gradient-primary text-primary-foreground shadow-primary w-full"
+                          onClick={() => setTab("create")}
+                        >
+                          Create New Request
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => setTab("requests")}
+                        >
+                          View My Requests
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-muted/30 border border-border rounded-2xl p-4 text-sm text-muted-foreground">
+                    Tip: When a hospital verifies a donation, your request status will update in real time.
+                  </div>
+                </div>
+              )}
+
+              {tab === "profile" && (
+                <ProfileDetails profile={profile} onEdit={() => navigate("/profile-setup")} />
+              )}
 
               {/* My Requests */}
               {tab === "requests" && (
@@ -321,12 +486,78 @@ export default function ReceiverDashboard() {
               )}
 
               {/* Messages */}
-              {tab === "messages" && (
-                <div className="bg-card rounded-2xl p-12 shadow-sm border border-border text-center">
-                  <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
-                  <p className="text-muted-foreground">Messages from donors will appear here</p>
+              {tab === "messages" && (() => {
+                const selectedReq = requests.find((r) => r.id === selectedRequestId);
+                const getBubbleClass = (m: Message) => {
+                  if (m.senderId === profile.uid) return "bg-primary text-primary-foreground ml-auto rounded-tr-none";
+                  const role = m.senderRole || "";
+                  if (role === "donor") return "bg-blue-100 text-blue-900 border border-blue-200 mr-auto rounded-tl-none";
+                  if (role === "hospital") return "bg-emerald-100 text-emerald-900 border border-emerald-200 mr-auto rounded-tl-none";
+                  if (role === "receiver") return "bg-pink-100 text-pink-900 border border-pink-200 mr-auto rounded-tl-none";
+                  return "bg-muted text-foreground mr-auto rounded-tl-none";
+                };
+                return (
+                <div className="bg-card rounded-2xl shadow-sm border border-border flex flex-col h-[500px] overflow-hidden">
+                  <div className="p-4 border-b border-border bg-muted/30">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between gap-4">
+                        <h3 className="font-semibold text-sm">Request Messaging</h3>
+                        <select
+                          value={selectedRequestId || ""}
+                          onChange={(e) => setSelectedRequestId(e.target.value)}
+                          className="text-sm rounded-lg border border-border bg-background px-3 py-1.5"
+                          disabled={requests.length === 0}
+                        >
+                          {requests.length === 0 ? (
+                            <option value="">No requests</option>
+                          ) : (
+                            requests.map((r) => (
+                              <option key={r.id} value={r.id}>
+                                {r.bloodGroup} • {r.units} units • {r.status}
+                              </option>
+                            ))
+                          )}
+                        </select>
+                      </div>
+                      {selectedReq && (
+                        <p className="text-xs text-muted-foreground">
+                          Chat with: <span className="text-blue-600 font-medium">{selectedReq.acceptedDonorName || "Donor"}</span>
+                          {selectedReq.verifiedByName && <>, <span className="text-emerald-600 font-medium">{selectedReq.verifiedByName} (Hospital)</span></>}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                    {threadMessages.length === 0 ? (
+                      <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                        No messages for this request yet.
+                      </div>
+                    ) : (
+                      threadMessages.map((m) => (
+                        <div key={m.id} className={`max-w-[80%] rounded-2xl p-3 text-sm ${getBubbleClass(m)}`}>
+                          <span className="text-[10px] font-medium opacity-80 block mb-0.5">{m.senderName || m.senderRole || "Unknown"}</span>
+                          {m.message}
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div className="p-4 border-t border-border bg-background flex gap-2">
+                    <Input
+                      placeholder="Type a message..."
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                      className="bg-muted/50 border-none focus-visible:ring-1"
+                    />
+                    <Button onClick={sendMessage} size="icon" className="shrink-0 rounded-xl">
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
-              )}
+                );
+              })()}
 
             </motion.div>
           </AnimatePresence>

@@ -61,7 +61,7 @@ function Counter({ target, suffix }: { target: number; suffix: string }) {
 export default function StatsSection() {
   const totalUsers = useFirestoreCount("users");
   const donors = useFirestoreCount("users", "role", "donor");
-  const activeRequests = useFirestoreCount("blood_requests", "status", "active");
+  const activeRequests = useFirestoreCount("blood_requests", "status", "open");
   const hospitals = useFirestoreCount("users", "role", "hospital");
   const donations = useFirestoreCount("donations");
 
