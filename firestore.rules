@@ -340,6 +340,23 @@ service cloud.firestore {
     }
 
     // -----------------------------
+    // Contact Admin messages (footer form)
+    // Anyone (even logged-out guests) can submit a message.
+    // Only admins can read, update (mark as read), or delete.
+    // -----------------------------
+    match /contact_messages/{mid} {
+      allow create: if
+        request.resource.data.email is string &&
+        request.resource.data.message is string &&
+        request.resource.data.email.size() > 0 &&
+        request.resource.data.message.size() > 0;
+
+      allow get, list: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // -----------------------------
     // SOS alerts
     // -----------------------------
     match /sos_alerts/{aid} {

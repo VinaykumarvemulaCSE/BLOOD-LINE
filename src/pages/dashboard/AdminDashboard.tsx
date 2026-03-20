@@ -6,6 +6,7 @@ import {
   doc,
   updateDoc,
   deleteDoc,
+  orderBy,
   query,
   serverTimestamp,
 } from "firebase/firestore";
@@ -19,7 +20,7 @@ import { Label } from "@/components/ui/label";
 import { useNavigate } from "react-router-dom";
 import {
   Shield, Users, Droplets, Activity, BarChart3, Trash2,
-  User, UserX, CheckCircle2, Building2, TrendingUp, Clock, ShieldCheck, Bell,
+  User, UserX, CheckCircle2, Building2, TrendingUp, Clock, ShieldCheck, Bell, Inbox, Mail, MailOpen,
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import ProfileDetails from "@/components/ProfileDetails";
@@ -55,15 +56,24 @@ const STATUS_COLOR: Record<string, string> = {
   verified:  "bg-emerald-500/10 text-emerald-700",
 };
 
+interface ContactMessage {
+  id: string;
+  email: string;
+  message: string;
+  read: boolean;
+  createdAt?: any;
+}
+
 export default function AdminDashboard() {
   const { profile } = useAuth();
   const navigate = useNavigate();
   const [tab, setTab] = useState<
-    "profile" | "overview" | "notifications" | "users" | "requests" | "analytics"
+    "profile" | "overview" | "notifications" | "users" | "requests" | "analytics" | "messages"
   >("overview");
   const [users, setUsers]       = useState<UserProfile[]>([]);
   const [requests, setRequests] = useState<BloodRequest[]>([]);
   const [donations, setDonations] = useState<Donation[]>([]);
+  const [contactMessages, setContactMessages] = useState<ContactMessage[]>([]);
 
   // Admin -> send notification panel
   const [sendingNotification, setSendingNotification] = useState(false);
@@ -76,7 +86,10 @@ export default function AdminDashboard() {
   const [notifPhone, setNotifPhone] = useState("");
   const [notifSendToAll, setNotifSendToAll] = useState(false);
 
+  // Only start listeners once admin profile is confirmed to avoid permission-denied errors
   useEffect(() => {
+    if (!profile || profile.role !== "admin") return;
+
     const unsub1 = onSnapshot(collection(db, "users"), (snap) => {
       setUsers(snap.docs.map((d) => ({ ...d.data(), uid: (d.data() as any)?.uid ?? d.id } as UserProfile)));
     });
@@ -86,8 +99,14 @@ export default function AdminDashboard() {
     const unsub3 = onSnapshot(collection(db, "donations"), (snap) => {
       setDonations(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Donation)));
     });
-    return () => { unsub1(); unsub2(); unsub3(); };
-  }, []);
+    const unsub4 = onSnapshot(
+      query(collection(db, "contact_messages"), orderBy("createdAt", "desc")),
+      (snap) => {
+        setContactMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() } as ContactMessage)));
+      }
+    );
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
+  }, [profile]);
 
   const deactivateUser = async (uid: string) => {
     await updateDoc(doc(db, "users", uid), { donorAvailability: false });
@@ -157,13 +176,16 @@ export default function AdminDashboard() {
     { icon: Building2,    label: "Hospitals",       value: users.filter((u) => u.role === "hospital").length, color: "bg-amber-500/10 text-amber-600" },
   ];
 
+  const unreadMessages = contactMessages.filter((m) => !m.read).length;
+
   const tabs = [
-    { key: "profile", label: "Profile", icon: User },
-    { key: "overview",   label: "Overview",   icon: Activity },
+    { key: "profile",       label: "Profile",       icon: User },
+    { key: "overview",      label: "Overview",      icon: Activity },
     { key: "notifications", label: "Notifications", icon: Bell },
-    { key: "users",      label: "Users",      icon: Users },
-    { key: "requests",   label: "Requests",   icon: Droplets },
-    { key: "analytics",  label: "Analytics",  icon: BarChart3 },
+    { key: "users",         label: "Users",         icon: Users },
+    { key: "requests",      label: "Requests",      icon: Droplets },
+    { key: "analytics",     label: "Analytics",     icon: BarChart3 },
+    { key: "messages",      label: "Messages",      icon: Inbox, badge: unreadMessages },
   ];
 
   if (!profile) return null;
@@ -191,12 +213,17 @@ export default function AdminDashboard() {
               <button
                 key={t.key}
                 onClick={() => setTab(t.key as any)}
-                className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-all ${
+                className={`relative flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-all ${
                   tab === t.key ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <t.icon className="h-4 w-4" />
                 {t.label}
+                {(t as any).badge > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-destructive text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                    {(t as any).badge}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -545,6 +572,83 @@ export default function AdminDashboard() {
                       ))}
                     </div>
                   </div>
+                </div>
+              )}
+
+              {/* === Contact Messages Inbox === */}
+              {tab === "messages" && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                      <Inbox className="h-4 w-4 text-primary" />
+                      Contact Inbox
+                      {unreadMessages > 0 && (
+                        <span className="bg-destructive text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                          {unreadMessages} unread
+                        </span>
+                      )}
+                    </h3>
+                  </div>
+
+                  {contactMessages.length === 0 ? (
+                    <div className="bg-card rounded-2xl p-12 shadow-sm border border-border text-center">
+                      <Mail className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
+                      <p className="text-muted-foreground">No messages yet</p>
+                    </div>
+                  ) : (
+                    contactMessages.map((msg) => (
+                      <div
+                        key={msg.id}
+                        className={`bg-card rounded-2xl p-5 shadow-sm border transition-colors ${
+                          msg.read ? "border-border opacity-70" : "border-primary/30 bg-primary/5"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-start gap-3 flex-1 min-w-0">
+                            <div className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                              msg.read ? "bg-muted" : "bg-primary/10"
+                            }`}>
+                              {msg.read
+                                ? <MailOpen className="h-4 w-4 text-muted-foreground" />
+                                : <Mail className="h-4 w-4 text-primary" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold text-foreground truncate">{msg.email}</p>
+                              <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{msg.message}</p>
+                              {msg.createdAt && (
+                                <p className="text-xs text-muted-foreground/60 mt-2">
+                                  {msg.createdAt?.toDate?.().toLocaleString() ?? ""}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex gap-2 shrink-0">
+                            {!msg.read && (
+                              <Button
+                                size="sm" variant="outline"
+                                className="h-8 text-xs"
+                                onClick={async () => {
+                                  await updateDoc(doc(db, "contact_messages", msg.id), { read: true });
+                                }}
+                              >
+                                Mark read
+                              </Button>
+                            )}
+                            <Button
+                              size="sm" variant="ghost"
+                              className="text-destructive h-8 w-8 p-0"
+                              onClick={async () => {
+                                await deleteDoc(doc(db, "contact_messages", msg.id));
+                                toast.success("Message deleted");
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               )}
 

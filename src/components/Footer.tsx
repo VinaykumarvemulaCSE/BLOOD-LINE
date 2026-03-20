@@ -1,5 +1,6 @@
 import { useState } from "react";
-import emailjs from "@emailjs/browser";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { Heart, Mail, Send } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -19,32 +20,20 @@ export default function Footer() {
     }
     setSending(true);
     try {
-      const serviceId = import.meta.env.VITE_EMAILJS_SERVICE_ID;
-      const templateId = import.meta.env.VITE_EMAILJS_TEMPLATE_ID;
-      const publicKey = import.meta.env.VITE_EMAILJS_PUBLIC_KEY;
+      // Save message to Firestore for admin to view
+      const messagesRef = collection(db, "contact_messages");
+      await addDoc(messagesRef, {
+        email,
+        message,
+        createdAt: serverTimestamp(),
+        read: false,
+      });
 
-      if (!serviceId || !templateId || !publicKey) {
-        toast.error("EmailJS credentials are not configured.");
-        setSending(false);
-        return;
-      }
-
-      await emailjs.send(
-        serviceId,
-        templateId,
-        {
-          from_email: email,
-          message: message,
-          to_name: "Admin",
-        },
-        publicKey
-      );
-
-      toast.success("Message sent to admin successfully!");
+      toast.success("Alert sent to Admin Panel successfully!");
       setEmail("");
       setMessage("");
-    } catch (error) {
-      console.error("EmailJS Error:", error);
+    } catch (error: any) {
+      console.error("Firebase Error:", error);
       toast.error("Failed to send message. Please try again later.");
     } finally {
       setSending(false);
