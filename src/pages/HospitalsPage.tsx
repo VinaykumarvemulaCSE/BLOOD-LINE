@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { BLOOD_GROUPS } from "@/lib/bloodCompatibility";
 import { motion } from "framer-motion";
@@ -13,14 +13,14 @@ export default function HospitalsPage() {
   const [hospitals, setHospitals] = useState<UserProfile[]>([]);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, "users"), (snap) => {
-      const h = snap.docs
-        .map((d) => d.data() as UserProfile)
-        .filter((u) => u.role === "hospital");
-      setHospitals(h);
+    // Query only hospital documents — Firestore rules permit this for unauthenticated users
+    const q = query(collection(db, "users"), where("role", "==", "hospital"));
+    const unsub = onSnapshot(q, (snap) => {
+      setHospitals(snap.docs.map((d) => d.data() as UserProfile));
     });
     return unsub;
   }, []);
+
 
   return (
     <div className="min-h-screen bg-background">
