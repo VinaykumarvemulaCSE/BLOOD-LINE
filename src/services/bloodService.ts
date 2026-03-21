@@ -264,14 +264,11 @@ export const verifyDonation = async (
       // WRITE: Update donor stats
       if (donorRef && donorSnap && donorSnap.exists()) {
         const dData = donorSnap.data();
-        const isDemoDonor = (dData.email || "").trim().toLowerCase() === "test.donor@bloodline.app";
-        if (!isDemoDonor) {
-          transaction.update(donorRef, {
-            lastDonationDate: new Date().toISOString(),
-            donorAvailability: false,
-            reputationScore: (dData.reputationScore || 0) + 10
-          });
-        }
+        transaction.update(donorRef, {
+          lastDonationDate: new Date().toISOString(),
+          donorAvailability: false,
+          reputationScore: (dData.reputationScore || 0) + 10
+        });
       }
     });
 

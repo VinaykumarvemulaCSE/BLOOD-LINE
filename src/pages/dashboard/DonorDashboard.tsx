@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Heart, CircleCheck as CheckCircle2, MessageSquare, User, Droplets, Calendar, Activity, Send, Loader2 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import ProfileDetails from "@/components/ProfileDetails";
+import SEO from "@/components/SEO";
 
 // --- TYPES ---
 interface BloodRequest {
@@ -59,6 +60,16 @@ interface Donation {
   verifiedAt?: string;
 }
 
+const getMs = (t: any) => {
+  if (!t) return 0;
+  if (typeof t?.toDate === "function") return t.toDate().getTime();
+  if (t instanceof Date) return t.getTime();
+  if (typeof t === "string") return new Date(t).getTime();
+  if (typeof t === "number") return t;
+  return 0;
+};
+
+
 export default function DonorDashboard() {
   const { user, profile, updateProfile } = useAuth();
   const navigate = useNavigate();
@@ -85,16 +96,24 @@ export default function DonorDashboard() {
     if (!uid) return;
 
     const qRequests = query(collection(db, "blood_requests"), where("status", "==", "open"));
-    const unsubRequests = onSnapshot(qRequests, (snap) => setRequests(snap.docs.map((d) => ({ id: d.id, ...d.data() } as BloodRequest))));
+    const unsubRequests = onSnapshot(qRequests, (snap) => {
+      const mapped = snap.docs.map((d) => ({ id: d.id, ...d.data() } as BloodRequest));
+      mapped.sort((a, b) => getMs(b.createdAt) - getMs(a.createdAt));
+      setRequests(mapped);
+    });
 
     const qAccepted = query(
-      collection(db, "blood_requests"), 
+      collection(db, "blood_requests"),
       where("acceptedBy", "==", uid),
       where("status", "in", ["accepted", "completed", "verified"])
     );
     const unsubAccepted = onSnapshot(
       qAccepted,
-      (snap) => setAcceptedRequests(snap.docs.map((d) => ({ id: d.id, ...d.data() } as BloodRequest))),
+      (snap) => {
+        const mapped = snap.docs.map((d) => ({ id: d.id, ...d.data() } as BloodRequest));
+        mapped.sort((a, b) => getMs(b.createdAt) - getMs(a.createdAt));
+        setAcceptedRequests(mapped);
+      },
       (err) => console.error("Accepted requests listener error:", err)
     );
 
@@ -127,16 +146,7 @@ export default function DonorDashboard() {
 
     return onSnapshot(qMessages, (snap) => {
       const mapped = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Message));
-      // Avoid Firestore `orderBy` index requirements; sort locally instead.
-      const toMs = (t: any) => {
-        if (!t) return 0;
-        if (typeof t?.toDate === "function") return t.toDate().getTime();
-        if (t instanceof Date) return t.getTime();
-        if (typeof t === "string") return new Date(t).getTime();
-        if (typeof t === "number") return t;
-        return 0;
-      };
-      mapped.sort((a, b) => toMs(a.timestamp) - toMs(b.timestamp));
+      mapped.sort((a, b) => getMs(a.timestamp) - getMs(b.timestamp));
       setThreadMessages(mapped);
     });
   }, [profile, selectedRequestId]);
@@ -193,8 +203,8 @@ export default function DonorDashboard() {
   const tabs = [
     { key: "profile", label: "Profile", icon: User },
     { key: "overview", label: "Overview", icon: Activity },
-    { key: "requests", label: "Requests", icon: Droplets },
-    { key: "accepted", label: "Accepted", icon: CheckCircle2 },
+    { key: "requests", label: "Requests", icon: Droplets, badge: requests.length },
+    { key: "accepted", label: "Accepted", icon: CheckCircle2, badge: acceptedRequests.length },
     { key: "history", label: "History", icon: Calendar },
     { key: "messages", label: "Messages", icon: MessageSquare },
   ] as const;
@@ -203,10 +213,11 @@ export default function DonorDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO title="Donor Dashboard — BloodLine" />
       <Navbar />
       <div className="pt-20 pb-8 px-4 max-w-6xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          
+
           {/* HEADER */}
           <div className="flex items-center gap-4 mb-6">
             <div className="w-14 h-14 rounded-2xl gradient-primary flex items-center justify-center shadow-lg">
@@ -225,18 +236,21 @@ export default function DonorDashboard() {
 
           {/* TABS */}
           <div className="flex gap-1 bg-muted/50 rounded-xl p-1 mb-6 overflow-x-auto border border-border">
-            {tabs.map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium rounded-lg whitespace-nowrap transition-all ${
-                  tab === t.key ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                }`}
-              >
-                <t.icon className="h-4 w-4" />
-                {t.label}
-              </button>
-            ))}
+            {tabs.map((t) => {
+              const badgeCount = (t as any).badge;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key as any)}
+                  className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium rounded-lg whitespace-nowrap transition-all relative ${tab === t.key ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                    }`}
+                >
+                  <t.icon className="h-4 w-4" />
+                  {t.label}
+                  {badgeCount > 0 && <span className="opacity-70 ml-0.5">({badgeCount})</span>}
+                </button>
+              )
+            })}
           </div>
 
           {/* CONTENT AREA */}
@@ -248,7 +262,7 @@ export default function DonorDashboard() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              
+
               {/* PROFILE TAB */}
               {tab === "profile" && (
                 <ProfileDetails profile={profile} onEdit={() => navigate("/profile-setup")} />
@@ -286,7 +300,7 @@ export default function DonorDashboard() {
                   </div>
 
                   {/* Profile Card */}
-                  <div className="bg-card rounded-2xl p-6 shadow-sm border border-border">
+                  <div className="bg-card rounded-2xl p-6 shadow-sm border border-border card-hover">
                     <h3 className="text-sm font-semibold text-muted-foreground mb-4">Profile Info</h3>
                     <div className="space-y-3 text-sm">
                       <div className="flex justify-between border-b border-border/50 pb-2"><span className="text-muted-foreground">Age</span><span className="font-semibold">{profile.age}</span></div>
@@ -296,7 +310,7 @@ export default function DonorDashboard() {
                   </div>
 
                   {/* Activity Stats Card */}
-                  <div className="bg-card rounded-2xl p-6 shadow-sm border border-border">
+                  <div className="bg-card rounded-2xl p-6 shadow-sm border border-border card-hover">
                     <h3 className="text-sm font-semibold text-muted-foreground mb-4">Quick Stats</h3>
                     <div className="space-y-4">
                       <div className="flex items-center gap-3 bg-muted/30 p-3 rounded-lg">
@@ -380,7 +394,7 @@ export default function DonorDashboard() {
                           variant="default"
                           className="w-full sm:w-auto bg-muted text-muted-foreground gap-2"
                         >
-                          <CheckCircle2 className="h-4 w-4" /> Waiting for next step
+                          <CheckCircle2 className="h-4 w-4" /> Thanks for your Donation
                         </Button>
                       )}
                     </div>
@@ -422,9 +436,9 @@ export default function DonorDashboard() {
                     ) : sorted.map((donation) => {
                       const statusLabel =
                         donation.status === "scheduled" ? "Scheduled"
-                        : donation.status === "completed" ? "Completed"
-                        : donation.status === "verified" ? "Verified"
-                        : donation.status;
+                          : donation.status === "completed" ? "Completed"
+                            : donation.status === "verified" ? "Verified"
+                              : donation.status;
                       const rawDate = donation.verifiedAt || donation.completedAt || donation.date || "";
                       const scoreEarned = donation.status === "verified" ? 10 : 0;
                       return (
@@ -469,63 +483,63 @@ export default function DonorDashboard() {
                   return "bg-muted text-foreground mr-auto rounded-tl-none";
                 };
                 return (
-                <div className="bg-card rounded-2xl shadow-sm border border-border flex flex-col h-[500px] overflow-hidden">
-                  <div className="p-4 border-b border-border bg-muted/30">
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center justify-between gap-4">
-                        <h3 className="font-semibold text-sm">Request Messaging</h3>
-                        <select
-                          value={selectedRequestId || ""}
-                          onChange={(e) => setSelectedRequestId(e.target.value)}
-                          className="text-sm rounded-lg border border-border bg-background px-3 py-1.5"
-                          disabled={acceptedRequests.length === 0}
-                        >
-                          {acceptedRequests.length === 0 ? (
-                            <option value="">No accepted requests</option>
-                          ) : (
-                            acceptedRequests.map((r) => (
-                              <option key={r.id} value={r.id}>
-                                {r.bloodGroup} • {r.units} units
-                              </option>
-                            ))
-                          )}
-                        </select>
+                  <div className="bg-card rounded-2xl shadow-sm border border-border flex flex-col h-[500px] overflow-hidden">
+                    <div className="p-4 border-b border-border bg-muted/30">
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center justify-between gap-4">
+                          <h3 className="font-semibold text-sm">Request Messaging</h3>
+                          <select
+                            value={selectedRequestId || ""}
+                            onChange={(e) => setSelectedRequestId(e.target.value)}
+                            className="text-sm rounded-lg border border-border bg-background px-3 py-1.5"
+                            disabled={acceptedRequests.length === 0}
+                          >
+                            {acceptedRequests.length === 0 ? (
+                              <option value="">No accepted requests</option>
+                            ) : (
+                              acceptedRequests.map((r) => (
+                                <option key={r.id} value={r.id}>
+                                  {r.bloodGroup} • {r.units} units
+                                </option>
+                              ))
+                            )}
+                          </select>
+                        </div>
+                        {selectedReq && (
+                          <p className="text-xs text-muted-foreground">
+                            Chat with: <span className="text-pink-600 font-medium">{selectedReq.creatorName || "Receiver"}</span>
+                            {selectedReq.verifiedByName && <>, <span className="text-emerald-600 font-medium">{selectedReq.verifiedByName} (Hospital)</span></>}
+                          </p>
+                        )}
                       </div>
-                      {selectedReq && (
-                        <p className="text-xs text-muted-foreground">
-                          Chat with: <span className="text-pink-600 font-medium">{selectedReq.creatorName || "Receiver"}</span>
-                          {selectedReq.verifiedByName && <>, <span className="text-emerald-600 font-medium">{selectedReq.verifiedByName} (Hospital)</span></>}
-                        </p>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                      {threadMessages.length === 0 ? (
+                        <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+                          No messages yet for this request.
+                        </div>
+                      ) : (
+                        threadMessages.map((m) => (
+                          <div key={m.id} className={`max-w-[80%] rounded-2xl p-3 text-sm ${getBubbleClass(m)}`}>
+                            <span className="text-[10px] font-medium opacity-80 block mb-0.5">{m.senderName || m.senderRole || "Unknown"}</span>
+                            {m.message}
+                          </div>
+                        ))
                       )}
                     </div>
+                    <div className="p-4 border-t border-border bg-background flex gap-2">
+                      <Input
+                        placeholder="Type a message..."
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                        className="bg-muted/50 border-none focus-visible:ring-1"
+                      />
+                      <Button onClick={sendMessage} size="icon" className="shrink-0 rounded-xl">
+                        <Send className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                    {threadMessages.length === 0 ? (
-                      <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-                        No messages yet for this request.
-                      </div>
-                    ) : (
-                      threadMessages.map((m) => (
-                        <div key={m.id} className={`max-w-[80%] rounded-2xl p-3 text-sm ${getBubbleClass(m)}`}>
-                          <span className="text-[10px] font-medium opacity-80 block mb-0.5">{m.senderName || m.senderRole || "Unknown"}</span>
-                          {m.message}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  <div className="p-4 border-t border-border bg-background flex gap-2">
-                    <Input 
-                      placeholder="Type a message..." 
-                      value={newMessage} 
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-                      className="bg-muted/50 border-none focus-visible:ring-1"
-                    />
-                    <Button onClick={sendMessage} size="icon" className="shrink-0 rounded-xl">
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
                 );
               })()}
 

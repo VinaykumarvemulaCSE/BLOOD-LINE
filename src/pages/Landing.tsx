@@ -1,5 +1,6 @@
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import SEO from "@/components/SEO";
 import HeroSection from "@/components/landing/HeroSection";
 import TrustIndicators from "@/components/landing/TrustIndicators";
 import StatsSection from "@/components/landing/StatsSection";
@@ -13,6 +14,7 @@ import CTASection from "@/components/landing/CTASection";
 export default function Landing() {
   return (
     <div className="min-h-screen bg-background">
+      <SEO title="BloodLine — Home" description="Join BloodLine to donate or find blood in real-time, connecting hospitals and donors seamlessly." />
       <Navbar />
       <HeroSection />
       <TrustIndicators />

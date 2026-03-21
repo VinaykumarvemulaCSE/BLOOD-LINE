@@ -7,7 +7,7 @@ import {
   signInWithPopup,
   signOut,
 } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 import { auth, db, googleProvider } from "@/lib/firebase";
 
 export type UserRole = "donor" | "receiver" | "hospital" | "admin";
@@ -148,16 +148,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
+    let unsubProfile: (() => void) | undefined;
+
+    const unsubAuth = onAuthStateChanged(auth, async (u) => {
       setUser(u);
+      
+      if (unsubProfile) {
+        unsubProfile();
+        unsubProfile = undefined;
+      }
+
       if (u) {
-        await fetchProfile(u);
+        unsubProfile = onSnapshot(doc(db, "users", u.uid), (snap) => {
+          if (snap.exists()) {
+            const data = snap.data() as Record<string, unknown>;
+            setProfile({ ...data, uid: data?.uid ?? u.uid } as UserProfile);
+          } else {
+            setProfile(null);
+          }
+        });
       } else {
         setProfile(null);
       }
       setLoading(false);
     });
-    return unsub;
+    
+    return () => {
+      unsubAuth();
+      if (unsubProfile) unsubProfile();
+    }
   }, []);
 
   const refreshProfile = async () => {

@@ -8,6 +8,7 @@ import { BLOOD_GROUPS } from "@/lib/bloodCompatibility";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import Navbar from "@/components/Navbar";
+import SEO from "@/components/SEO";
 import { Heart, CircleCheck as CheckCircle2, ArrowLeft, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { doc, setDoc } from "firebase/firestore";
@@ -133,6 +134,7 @@ export default function ProfileSetup() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO title="Profile Setup — BloodLine" />
       <Navbar />
       <div className="pt-24 pb-16 px-4 max-w-2xl mx-auto">
         <AnimatePresence mode="wait">

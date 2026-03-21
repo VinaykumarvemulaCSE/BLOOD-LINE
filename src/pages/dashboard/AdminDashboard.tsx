@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import ProfileDetails from "@/components/ProfileDetails";
+import SEO from "@/components/SEO";
 import { toast } from "sonner";
 
 interface BloodRequest {
@@ -55,6 +56,16 @@ const STATUS_COLOR: Record<string, string> = {
   completed: "bg-green-500/10 text-green-700",
   verified:  "bg-emerald-500/10 text-emerald-700",
 };
+
+const getMs = (t: any) => {
+  if (!t) return 0;
+  if (typeof t?.toDate === "function") return t.toDate().getTime();
+  if (t instanceof Date) return t.getTime();
+  if (typeof t === "string") return new Date(t).getTime();
+  if (typeof t === "number") return t;
+  return 0;
+};
+
 
 interface ContactMessage {
   id: string;
@@ -94,7 +105,9 @@ export default function AdminDashboard() {
       setUsers(snap.docs.map((d) => ({ ...d.data(), uid: (d.data() as any)?.uid ?? d.id } as UserProfile)));
     });
     const unsub2 = onSnapshot(collection(db, "blood_requests"), (snap) => {
-      setRequests(snap.docs.map((d) => ({ id: d.id, ...d.data() } as BloodRequest)));
+      const mapped = snap.docs.map((d) => ({ id: d.id, ...d.data() } as BloodRequest));
+      mapped.sort((a, b) => getMs(b.createdAt) - getMs(a.createdAt));
+      setRequests(mapped);
     });
     const unsub3 = onSnapshot(collection(db, "donations"), (snap) => {
       setDonations(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Donation)));
@@ -192,6 +205,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO title="Admin Dashboard — BloodLine" />
       <Navbar />
       <div className="pt-20 pb-8 px-4 max-w-6xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
@@ -253,7 +267,7 @@ export default function AdminDashboard() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: i * 0.07 }}
-                        className="bg-card rounded-2xl p-5 shadow-sm border border-border"
+                        className="bg-card rounded-2xl p-5 shadow-sm border border-border card-hover"
                       >
                         <div className={`w-10 h-10 rounded-xl ${s.color} flex items-center justify-center mb-3`}>
                           <s.icon className="h-5 w-5" />

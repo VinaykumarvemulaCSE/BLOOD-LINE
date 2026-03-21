@@ -4,6 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import type { UserRole } from "@/contexts/AuthContext";
+import { HelmetProvider } from "react-helmet-async";
 
 import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
@@ -20,13 +21,14 @@ import HospitalDashboard from "@/pages/dashboard/HospitalDashboard";
 import AdminDashboard from "@/pages/dashboard/AdminDashboard";
 import NotFound from "@/pages/NotFound";
 import SOSButton from "@/components/SOSButton";
+import LoadingState from "@/components/LoadingState";
 
 const queryClient = new QueryClient();
 
 // Guard: must be logged in + profile complete + correct role
 function AuthGuard({ requiredRole, children }: { requiredRole: UserRole; children: React.ReactNode }) {
   const { user, profile, loading } = useAuth();
-  if (loading) return <div className="flex min-h-screen items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+  if (loading) return <LoadingState />;
   if (!user) return <Navigate to="/login" replace />;
   if (!profile?.profileCompleted) return <Navigate to="/profile-setup" replace />;
   // Redirect to correct dashboard if wrong role
@@ -37,7 +39,7 @@ function AuthGuard({ requiredRole, children }: { requiredRole: UserRole; childre
 // Guard: must be logged in (for profile setup)
 function ProfileGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="flex min-h-screen items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+  if (loading) return <LoadingState />;
   if (!user) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }
@@ -45,7 +47,7 @@ function ProfileGuard({ children }: { children: React.ReactNode }) {
 // Auto-redirect logged-in users away from login page
 function LoginRoute() {
   const { user, profile, loading } = useAuth();
-  if (loading) return <div className="flex min-h-screen items-center justify-center"><div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+  if (loading) return <LoadingState />;
   if (user && profile?.profileCompleted) {
     return <Navigate to={`/dashboard/${profile.role}`} replace />;
   }
@@ -84,17 +86,19 @@ function AppRoutes() {
 }
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Sonner />
-      <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-        <AuthProvider>
-          <AppRoutes />
-          <GlobalSOS />
-        </AuthProvider>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
+  <HelmetProvider>
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <Sonner />
+        <BrowserRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
+          <AuthProvider>
+            <AppRoutes />
+            <GlobalSOS />
+          </AuthProvider>
+        </BrowserRouter>
+      </TooltipProvider>
+    </QueryClientProvider>
+  </HelmetProvider>
 );
 
 export default App;

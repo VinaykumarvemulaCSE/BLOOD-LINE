@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Heart, CheckCircle2, Clock, Shield, Droplets } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import SEO from "@/components/SEO";
 import { useAuth } from "@/contexts/AuthContext";
 import { getDaysUntilEligible, isEligibleToDonate } from "@/lib/bloodCompatibility";
 
@@ -25,6 +26,7 @@ export default function DonatePage() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO title="Donate Blood — BloodLine" description="Find out if you are eligible to donate blood and learn about the donation process." />
       <Navbar />
       <div className="pt-24 pb-16 px-4 max-w-4xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>

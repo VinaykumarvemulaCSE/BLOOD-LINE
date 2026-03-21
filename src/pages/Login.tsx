@@ -8,6 +8,7 @@ import { Heart, Mail, Chrome, Users } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import Navbar from "@/components/Navbar";
+import SEO from "@/components/SEO";
 
 const DEMO_ROLES: { role: UserRole; label: string; emoji: string }[] = [
   { role: "donor", label: "Donor", emoji: "🩸" },
@@ -73,6 +74,7 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO title="Log In / Register — BloodLine" description="Sign in to your BloodLine account or create a new one to start saving lives." />
       <Navbar />
       <div className="pt-24 pb-16 flex items-center justify-center px-4">
         <motion.div
@@ -92,7 +94,7 @@ export default function Login() {
             </p>
           </div>
 
-          <div className="bg-card rounded-2xl shadow-card border border-border p-6">
+          <div className="bg-card rounded-2xl shadow-card border border-border p-6 card-hover">
             {/* Tab switcher */}
             <div className="flex rounded-xl bg-muted p-1 mb-6">
               <button

@@ -2,10 +2,12 @@ import { motion } from "framer-motion";
 import { Heart, Shield, Users, Globe } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import SEO from "@/components/SEO";
 
 export default function AboutPage() {
   return (
     <div className="min-h-screen bg-background">
+      <SEO title="About Us — BloodLine" description="Learn about BloodLine's mission to save lives through real-time blood donation matching." />
       <Navbar />
       <div className="pt-24 pb-16 px-4 max-w-4xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
@@ -29,7 +31,7 @@ export default function AboutPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.1 }}
-                className="bg-card rounded-2xl p-6 shadow-card border border-border"
+                className="bg-card rounded-2xl p-6 shadow-card border border-border card-hover"
               >
                 <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
                   <item.icon className="h-6 w-6 text-primary" />

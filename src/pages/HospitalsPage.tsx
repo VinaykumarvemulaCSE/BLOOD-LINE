@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Building2, MapPin, Phone } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import SEO from "@/components/SEO";
 import type { UserProfile } from "@/contexts/AuthContext";
 
 export default function HospitalsPage() {
@@ -24,6 +25,7 @@ export default function HospitalsPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO title="Partner Hospitals — BloodLine" description="View the list of partner hospitals on the BloodLine network." />
       <Navbar />
       <div className="pt-24 pb-16 px-4 max-w-4xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>

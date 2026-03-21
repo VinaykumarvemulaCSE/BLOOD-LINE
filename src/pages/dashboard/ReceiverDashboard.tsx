@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import ProfileDetails from "@/components/ProfileDetails";
+import SEO from "@/components/SEO";
 import { toast } from "sonner";
 
 interface BloodRequest {
@@ -59,6 +60,16 @@ const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
   completed: { label: "Completed", color: "bg-green-500/10 text-green-600" },
   verified:  { label: "Verified ✓", color: "bg-emerald-500/10 text-emerald-600" },
 };
+
+const getMs = (t: any) => {
+  if (!t) return 0;
+  if (typeof t?.toDate === "function") return t.toDate().getTime();
+  if (t instanceof Date) return t.getTime();
+  if (typeof t === "string") return new Date(t).getTime();
+  if (typeof t === "number") return t;
+  return 0;
+};
+
 
 export default function ReceiverDashboard() {
   const { profile } = useAuth();
@@ -119,16 +130,7 @@ export default function ReceiverDashboard() {
 
     return onSnapshot(qMessages, (snap) => {
       const mapped = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Message));
-      // Avoid Firestore `orderBy` index requirements; sort locally instead.
-      const toMs = (t: any) => {
-        if (!t) return 0;
-        if (typeof t?.toDate === "function") return t.toDate().getTime();
-        if (t instanceof Date) return t.getTime();
-        if (typeof t === "string") return new Date(t).getTime();
-        if (typeof t === "number") return t;
-        return 0;
-      };
-      mapped.sort((a, b) => toMs(a.timestamp) - toMs(b.timestamp));
+      mapped.sort((a, b) => getMs(a.timestamp) - getMs(b.timestamp));
       setThreadMessages(mapped);
     });
   }, [profile, selectedRequestId]);
@@ -216,6 +218,7 @@ export default function ReceiverDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO title="Receiver Dashboard — BloodLine" />
       <Navbar />
 
       <div className="pt-20 pb-8 px-4 max-w-6xl mx-auto">
@@ -260,7 +263,7 @@ export default function ReceiverDashboard() {
               {tab === "overview" && (
                 <div className="space-y-4">
                   <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <div className="bg-card rounded-2xl p-6 shadow-sm border border-border">
+                    <div className="bg-card rounded-2xl p-6 shadow-sm border border-border card-hover">
                       <h3 className="text-sm font-semibold text-muted-foreground mb-3">Patient Health</h3>
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between border-b border-border/50 pb-2">
@@ -280,7 +283,7 @@ export default function ReceiverDashboard() {
                       </div>
                     </div>
 
-                    <div className="bg-card rounded-2xl p-6 shadow-sm border border-border">
+                    <div className="bg-card rounded-2xl p-6 shadow-sm border border-border card-hover">
                       <h3 className="text-sm font-semibold text-muted-foreground mb-3">Request Details</h3>
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between border-b border-border/50 pb-2">
@@ -298,7 +301,7 @@ export default function ReceiverDashboard() {
                       </div>
                     </div>
 
-                    <div className="bg-card rounded-2xl p-6 shadow-sm border border-border">
+                    <div className="bg-card rounded-2xl p-6 shadow-sm border border-border card-hover">
                       <h3 className="text-sm font-semibold text-muted-foreground mb-3">Next Steps</h3>
                       <div className="space-y-3">
                         <Button

@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import ProfileDetails from "@/components/ProfileDetails";
+import SEO from "@/components/SEO";
 import { toast } from "sonner";
 
 interface Inventory {
@@ -66,6 +67,16 @@ const STATUS_COLOR: Record<string, string> = {
   verified:  "bg-emerald-500/10 text-emerald-700",
 };
 
+const getMs = (t: any) => {
+  if (!t) return 0;
+  if (typeof t?.toDate === "function") return t.toDate().getTime();
+  if (t instanceof Date) return t.getTime();
+  if (typeof t === "string") return new Date(t).getTime();
+  if (typeof t === "number") return t;
+  return 0;
+};
+
+
 export default function HospitalDashboard() {
   const { profile } = useAuth();
   const navigate = useNavigate();
@@ -98,7 +109,9 @@ export default function HospitalDashboard() {
   useEffect(() => {
     const q = query(collection(db, "blood_requests"));
     const unsub = onSnapshot(q, (snap) => {
-      setAllRequests(snap.docs.map((d) => ({ id: d.id, ...d.data() } as BloodRequest)));
+      const mapped = snap.docs.map((d) => ({ id: d.id, ...d.data() } as BloodRequest));
+      mapped.sort((a, b) => getMs(b.createdAt) - getMs(a.createdAt));
+      setAllRequests(mapped);
     });
     return unsub;
   }, []);
@@ -132,16 +145,7 @@ export default function HospitalDashboard() {
 
     return onSnapshot(qMessages, (snap) => {
       const mapped = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Message));
-      // Avoid Firestore `orderBy` index requirements; sort locally instead.
-      const toMs = (t: any) => {
-        if (!t) return 0;
-        if (typeof t?.toDate === "function") return t.toDate().getTime();
-        if (t instanceof Date) return t.getTime();
-        if (typeof t === "string") return new Date(t).getTime();
-        if (typeof t === "number") return t;
-        return 0;
-      };
-      mapped.sort((a, b) => toMs(a.timestamp) - toMs(b.timestamp));
+      mapped.sort((a, b) => getMs(a.timestamp) - getMs(b.timestamp));
       setThreadMessages(mapped);
     });
   }, [profile, selectedRequestId]);
@@ -239,6 +243,7 @@ export default function HospitalDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO title="Hospital Dashboard — BloodLine" />
       <Navbar />
       <div className="pt-20 pb-8 px-4 max-w-6xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
@@ -291,7 +296,7 @@ export default function HospitalDashboard() {
                     const units = inventory[bg] || 0;
                     const status = getStockStatus(units);
                     return (
-                      <div key={bg} className="bg-card rounded-2xl p-5 shadow-sm border border-border">
+                      <div key={bg} className="bg-card rounded-2xl p-5 shadow-sm border border-border card-hover">
                         <div className="flex items-center justify-between mb-3">
                           <span className="text-2xl font-display font-bold text-foreground">{bg}</span>
                           <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${status.cls}`}>

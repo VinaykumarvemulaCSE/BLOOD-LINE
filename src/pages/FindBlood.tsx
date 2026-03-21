@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { MapPin, Droplets, AlertTriangle, Clock, Filter } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import SEO from "@/components/SEO";
 
 interface BloodRequest {
   id: string;
@@ -35,6 +36,7 @@ export default function FindBlood() {
 
   return (
     <div className="min-h-screen bg-background">
+      <SEO title="Find Blood Requests — BloodLine" description="Browse active blood requests near you and help save a life." />
       <Navbar />
       <div className="pt-24 pb-16 px-4 max-w-4xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
