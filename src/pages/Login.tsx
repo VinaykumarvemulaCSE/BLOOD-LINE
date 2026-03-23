@@ -83,11 +83,17 @@ export default function Login() {
           className="w-full max-w-md"
         >
           <div className="text-center mb-8">
-            <Heart className="h-10 w-10 mx-auto text-primary fill-primary/20 mb-3" />
-            <h1 className="text-2xl font-display font-bold text-foreground">
+            <motion.div 
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", stiffness: 300, damping: 20 }}
+            >
+              <Heart className="h-12 w-12 mx-auto text-primary fill-primary/20 mb-4" />
+            </motion.div>
+            <h1 className="text-3xl font-display font-extrabold text-foreground tracking-tight">
               {tab === "login" ? "Welcome Back" : "Join BloodLine"}
             </h1>
-            <p className="text-muted-foreground text-sm mt-1">
+            <p className="text-muted-foreground mt-2 font-medium">
               {tab === "login"
                 ? "Sign in to your account"
                 : "Create your account and start saving lives"}

@@ -117,18 +117,18 @@ export default function HeroSection() {
             <motion.h1
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2, duration: 0.6 }}
-              className="text-5xl md:text-6xl lg:text-7xl font-display font-extrabold text-secondary leading-[1.08] tracking-tight"
+              transition={{ delay: 0.1, duration: 0.5, ease: "easeOut" }}
+              className="text-5xl md:text-6xl lg:text-[5rem] font-display font-black text-secondary leading-[1.05] tracking-tight"
             >
               Donate Blood.
               <br />
-              <span className="text-gradient relative">
+              <span className="text-gradient relative inline-block mt-2">
                 Save Lives.
                 <motion.span
-                  className="absolute -bottom-1 left-0 right-0 h-1 bg-primary/30 rounded-full"
+                  className="absolute -bottom-2 left-0 right-0 h-1.5 bg-primary/30 rounded-full"
                   initial={{ scaleX: 0 }}
                   animate={{ scaleX: 1 }}
-                  transition={{ delay: 0.8, duration: 0.6, ease: "easeOut" }}
+                  transition={{ delay: 0.6, duration: 0.5, ease: "easeOut" }}
                 />
               </span>
             </motion.h1>
@@ -136,12 +136,12 @@ export default function HeroSection() {
             <motion.p
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.35 }}
-              className="mt-6 text-lg text-muted-foreground max-w-lg font-body leading-relaxed"
+              transition={{ delay: 0.25, duration: 0.4 }}
+              className="mt-6 text-lg md:text-xl text-muted-foreground max-w-lg font-body leading-relaxed"
             >
-              BloodLine connects blood donors, receivers, and hospitals through a
+              BloodLine connects donors, receivers, and hospitals through a
               real-time platform — making emergency blood discovery{" "}
-              <span className="text-foreground font-medium">fast, reliable, and life-saving.</span>
+              <span className="text-foreground font-semibold">fast, reliable, and life-saving.</span>
             </motion.p>
 
             {/* Blood types chips */}
@@ -159,27 +159,27 @@ export default function HeroSection() {
             <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
-              className="mt-8 flex flex-wrap gap-3"
+              transition={{ delay: 0.4, duration: 0.4 }}
+              className="mt-10 flex flex-wrap gap-4"
             >
               <Button
                 size="lg"
                 id="hero-find-blood"
                 onClick={() => navigate("/find-blood")}
-                className="gradient-primary text-primary-foreground shadow-primary gap-2 font-semibold text-base px-6 rounded-xl group"
+                className="gradient-primary text-primary-foreground shadow-primary gap-2 font-bold text-base px-8 h-14 rounded-xl group hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
               >
-                <Search className="h-4 w-4" />
+                <Search className="h-5 w-5" />
                 Find Blood Now
-                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
               </Button>
               <Button
                 size="lg"
                 variant="outline"
                 id="hero-become-donor"
                 onClick={() => navigate("/login?tab=register")}
-                className="gap-2 font-semibold text-base px-6 rounded-xl border-2 hover:bg-primary/5 hover:border-primary/40 transition-all"
+                className="gap-2 font-bold text-base px-8 h-14 rounded-xl border-2 hover:bg-primary/5 hover:border-primary/40 focus:ring-2 focus:ring-primary/20 transition-all duration-200"
               >
-                <HeartHandshake className="h-4 w-4 text-primary" />
+                <HeartHandshake className="h-5 w-5 text-primary" />
                 Become a Donor
               </Button>
             </motion.div>

@@ -10,7 +10,7 @@ import {
 import { db, auth } from "@/lib/firebase";
 import { useAuth, DEMO_ACCOUNTS_EXPORT } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { getDaysUntilEligible, isEligibleToDonate } from "@/lib/bloodCompatibility";
+import { getDaysUntilEligible, isEligibleToDonate, COMPATIBILITY, type BloodGroup } from "@/lib/bloodCompatibility";
 import { acceptBloodRequest, completeDonation as completeBloodDonation, updateDonorAfterDonation } from "@/services/bloodService";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import SEO from "@/components/SEO";
 // --- TYPES ---
 interface BloodRequest {
   id: string;
+  requestCode?: string;
   createdBy: string;
   creatorName?: string;
   bloodGroup: string;
@@ -87,6 +88,13 @@ export default function DonorDashboard() {
 
   const eligible = isEligibleToDonate(profile?.lastDonationDate || null);
   const daysLeft = getDaysUntilEligible(profile?.lastDonationDate || null);
+
+  // Filter requests by blood group compatibility
+  const donorBloodGroup = profile?.bloodGroup as BloodGroup | undefined;
+  const compatibleGroups: string[] = donorBloodGroup && COMPATIBILITY[donorBloodGroup]
+    ? COMPATIBILITY[donorBloodGroup]
+    : [];
+  const compatibleRequests = requests.filter(r => compatibleGroups.includes(r.bloodGroup));
 
   // Use Firebase Auth uid as source of truth (avoids stale profile.uid from older docs)
   const uid = auth.currentUser?.uid ?? user?.uid ?? profile?.uid;
@@ -232,25 +240,27 @@ export default function DonorDashboard() {
                 <span>{profile.city}</span>
               </div>
             </div>
-          </div>
-
-          {/* TABS */}
-          <div className="flex gap-1 bg-muted/50 rounded-xl p-1 mb-6 overflow-x-auto border border-border">
-            {tabs.map((t) => {
-              const badgeCount = (t as any).badge;
-              return (
-                <button
-                  key={t.key}
-                  onClick={() => setTab(t.key as any)}
-                  className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium rounded-lg whitespace-nowrap transition-all relative ${tab === t.key ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                    }`}
-                >
-                  <t.icon className="h-4 w-4" />
-                  {t.label}
-                  {badgeCount > 0 && <span className="opacity-70 ml-0.5">({badgeCount})</span>}
-                </button>
-              )
-            })}
+          </div>          {/* TABS */}
+          <div className="flex gap-2 bg-muted/60 rounded-2xl p-1.5 mb-8 overflow-x-auto border border-border/50 backdrop-blur-sm sticky top-20 z-10 scrollbar-hide">
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl whitespace-nowrap transition-all duration-200 ${
+                  tab === t.key
+                    ? "bg-card shadow-sm text-foreground border border-border/50 scale-[1.02]"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+              >
+                <t.icon className="h-4 w-4" />
+                {t.label}
+                {"badge" in t && t.badge > 0 && (
+                  <Badge variant="destructive" className="ml-1.5 h-5 px-1.5 min-w-[20px] justify-center text-[10px]">
+                    {t.badge}
+                  </Badge>
+                )}
+              </button>
+            ))}
           </div>
 
           {/* CONTENT AREA */}
@@ -294,9 +304,31 @@ export default function DonorDashboard() {
                         )}
                       </div>
                     </div>
-                    <p className="text-center text-sm font-medium">
+                    <p className="text-center text-sm font-medium mb-3">
                       {eligible ? <span className="text-success">Eligible to donate</span> : <span className="text-primary">Next donation in {daysLeft} days</span>}
                     </p>
+                    {profile.lastDonationDate && (
+                      <p className="text-xs text-muted-foreground mb-3">
+                        Last donated: {new Date(profile.lastDonationDate).toLocaleDateString(undefined, { dateStyle: "medium" })}
+                      </p>
+                    )}
+                    {eligible && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full text-xs gap-1.5"
+                        onClick={async () => {
+                          try {
+                            await updateProfile({ lastDonationDate: new Date().toISOString() });
+                            (await import("sonner")).toast.success("Last donation date recorded!");
+                          } catch {
+                            (await import("sonner")).toast.error("Failed to record donation date");
+                          }
+                        }}
+                      >
+                        <Calendar className="h-3 w-3" /> Record Donation Today
+                      </Button>
+                    )}
                   </div>
 
                   {/* Profile Card */}
@@ -329,17 +361,25 @@ export default function DonorDashboard() {
               {/* REQUESTS TAB */}
               {tab === "requests" && (
                 <div className="space-y-3">
-                  {requests.length === 0 ? (
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm text-muted-foreground">
+                      Showing requests compatible with your blood group <span className="font-semibold text-foreground">{profile.bloodGroup}</span>
+                    </p>
+                    <Badge variant="outline" className="text-xs">{compatibleRequests.length} compatible</Badge>
+                  </div>
+                  {compatibleRequests.length === 0 ? (
                     <div className="bg-card rounded-2xl p-12 text-center border border-border shadow-sm">
                       <Droplets className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
-                      <p className="text-muted-foreground">No active blood requests right now.</p>
+                      <p className="text-muted-foreground">No compatible blood requests right now.</p>
+                      <p className="text-xs text-muted-foreground mt-1">You can donate {profile.bloodGroup} to: {compatibleGroups.join(", ")}</p>
                     </div>
-                  ) : requests.map((req) => (
+                  ) : compatibleRequests.map((req) => (
                     <div key={req.id} className="bg-card rounded-2xl p-5 shadow-sm border border-border flex items-center justify-between hover:border-primary/50 transition-colors">
                       <div>
                         <div className="flex items-center gap-2 mb-2">
                           <Badge className={req.emergency ? "bg-destructive hover:bg-destructive" : ""}>{req.bloodGroup}</Badge>
                           {req.emergency && <Badge variant="outline" className="text-destructive border-destructive text-xs">🚨 Emergency</Badge>}
+                          {req.requestCode && <span className="text-[10px] text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded">{req.requestCode}</span>}
                         </div>
                         <p className="text-sm font-medium">{req.hospitalLocation}</p>
                         <p className="text-xs text-muted-foreground mt-1">{req.units} units needed</p>
@@ -497,9 +537,9 @@ export default function DonorDashboard() {
                             {acceptedRequests.length === 0 ? (
                               <option value="">No accepted requests</option>
                             ) : (
-                              acceptedRequests.map((r) => (
+                            acceptedRequests.map((r) => (
                                 <option key={r.id} value={r.id}>
-                                  {r.bloodGroup} • {r.units} units
+                                  {r.requestCode ? `${r.requestCode} · ` : ""}{r.bloodGroup} · {r.units} units
                                 </option>
                               ))
                             )}

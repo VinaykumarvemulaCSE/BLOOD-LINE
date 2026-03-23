@@ -1,0 +1,17 @@
+{
+  "name": "BloodLine — Donate Blood. Save Lives.",
+  "short_name": "BloodLine",
+  "description": "Real-time blood donation platform connecting donors, receivers, and hospitals.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#c0162e",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    }
+  ]
+}

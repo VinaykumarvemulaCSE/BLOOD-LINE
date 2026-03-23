@@ -1,8 +1,7 @@
-import { addDoc, collection, query, where, getDocs, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection, query, where, getDocs, serverTimestamp, runTransaction, doc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { COMPATIBILITY } from "@/lib/bloodCompatibility";
-
-const ADMIN_EMAIL = "kumarvinay072007@gmail.com";
+import { ADMIN_EMAILS } from "@/contexts/AuthContext";
 
 export const sendSOSAlert = async (profile: any, userId: string) => {
   try {
@@ -34,13 +33,26 @@ export const sendSOSAlert = async (profile: any, userId: string) => {
       bloodGroup,
       city,
       role: profile.role,
-      adminEmail: ADMIN_EMAIL,
+      adminEmail: ADMIN_EMAILS[0],
       status: "pending",
       createdAt: serverTimestamp(),
     });
 
+    // Generate requestCode for SOS requests too
+    let requestCode = `BLV${Date.now().toString().slice(-6)}`;
+    try {
+      const counterRef = doc(db, "counters", "blood_requests");
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(counterRef);
+        const count = (snap.exists() ? (snap.data().count || 0) : 0) + 1;
+        tx.set(counterRef, { count }, { merge: true });
+        requestCode = `BLV${String(count).padStart(4, "0")}`;
+      });
+    } catch { /* use fallback */ }
+
     if (profile.role === "receiver") {
       await addDoc(collection(db, "blood_requests"), {
+        requestCode,
         clientId: `sos-${Date.now()}`,
         createdBy: userId,
         creatorName: profile.name || "Unknown",
@@ -68,7 +80,7 @@ export const sendSOSAlert = async (profile: any, userId: string) => {
     await addDoc(collection(db, "notifications"), {
       type: "sos_emergency",
       message: `SOS Alert from ${profile.name || "User"} (${bloodGroup}) in ${city}. Phone: ${profile.phone || "—"}`,
-      adminEmail: ADMIN_EMAIL,
+      adminEmail: ADMIN_EMAILS[0],
       userId,
       read: false,
       priority: "critical",

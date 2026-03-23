@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth, type UserRole } from "@/contexts/AuthContext";
+import { useAuth, type UserRole, ADMIN_EMAILS } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { doc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
-const ADMIN_EMAILS = ["kumarvinay072007@gmail.com", "admin@bloodline.app"];
+
 
 export default function ProfileSetup() {
   const { user, profile, updateProfile } = useAuth();
@@ -22,7 +22,7 @@ export default function ProfileSetup() {
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<"form" | "preview">("form");
   const isAdminEmail =
-    ADMIN_EMAILS.includes(user?.email || "") || (user?.email || "").toLowerCase() === "test.admin@bloodline.app";
+    ADMIN_EMAILS.some((e) => e.toLowerCase() === (user?.email || "").toLowerCase());
   const [form, setForm] = useState({
     name: profile?.name || user?.displayName || "",
     phone: profile?.phone || "",
@@ -194,17 +194,25 @@ export default function ProfileSetup() {
 
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="bloodGroup">Blood Group</Label>
-                    <select
-                      id="bloodGroup"
-                      value={form.bloodGroup}
-                      onChange={(e) => set("bloodGroup", e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-                    >
-                      {BLOOD_GROUPS.map((bg) => (
-                        <option key={bg} value={bg}>{bg}</option>
-                      ))}
-                    </select>
+                    {(form.role === "donor" || form.role === "receiver") ? (
+                      <>
+                        <Label htmlFor="bloodGroup">Blood Group</Label>
+                        <select
+                          id="bloodGroup"
+                          value={form.bloodGroup}
+                          onChange={(e) => set("bloodGroup", e.target.value)}
+                          className="mt-1 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                        >
+                          {BLOOD_GROUPS.map((bg) => (
+                            <option key={bg} value={bg}>{bg}</option>
+                          ))}
+                        </select>
+                      </>
+                    ) : (
+                      <div className="text-xs text-muted-foreground bg-muted/50 rounded-lg p-3">
+                        Blood group not required for {form.role === "hospital" ? "hospitals" : "admins"}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <Label htmlFor="city">City</Label>

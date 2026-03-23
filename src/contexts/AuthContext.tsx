@@ -12,7 +12,7 @@ import { auth, db, googleProvider } from "@/lib/firebase";
 
 export type UserRole = "donor" | "receiver" | "hospital" | "admin";
 
-const ADMIN_EMAILS = "kumarvinay072007@gmail.com";
+export const ADMIN_EMAILS = ["kumarvinay072007@gmail.com"];
 
 export interface UserProfile {
   uid: string;
@@ -58,10 +58,11 @@ export const DEMO_ACCOUNTS: Record<UserRole, { email: string; password: string; 
   donor: { email: "test.donor@bloodline.app", password: "BloodLine@Test2026", name: "Test Donor" },
   receiver: { email: "test.receiver@bloodline.app", password: "BloodLine@Test2026", name: "Test Receiver" },
   hospital: { email: "test.hospital@bloodline.app", password: "BloodLine@Test2026", name: "Test Hospital" },
-  admin: { email: ADMIN_EMAILS, password: "Vinay@123", name: "Vinay Kumar" },
+  admin: { email: "kumarvinay072007@gmail.com", password: "Vinay@123", name: "Vinay Kumar Vemula" },
 };
 
 export { DEMO_ACCOUNTS as DEMO_ACCOUNTS_EXPORT };
+export { ADMIN_EMAILS as ADMIN_EMAILS_EXPORT };
 
 const buildDemoProfile = (uid: string, role: UserRole, email: string, name: string): UserProfile => ({
   uid,
@@ -152,7 +153,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const unsubAuth = onAuthStateChanged(auth, async (u) => {
       setUser(u);
-      
+
       if (unsubProfile) {
         unsubProfile();
         unsubProfile = undefined;
@@ -172,7 +173,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       setLoading(false);
     });
-    
+
     return () => {
       unsubAuth();
       if (unsubProfile) unsubProfile();
@@ -206,7 +207,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const existingProfile = await getDoc(doc(db, "users", result.user.uid));
 
     if (!existingProfile.exists()) {
-      const defaultRole = ADMIN_EMAILS.includes(result.user.email || "") ? "admin" : "donor";
+      const defaultRole = ADMIN_EMAILS.includes(result.user.email?.toLowerCase() || "") ? "admin" : "donor";
       await setDoc(doc(db, "users", result.user.uid), {
         uid: result.user.uid,
         name: result.user.displayName || "User",
@@ -224,12 +225,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const demoLogin = async (role: UserRole) => {
-    const { email, password, name } = DEMO_ACCOUNTS[role];
+    const { email, password } = DEMO_ACCOUNTS[role];
     let cred;
     try {
+      // Try signing in first (works if account exists with correct password)
       cred = await signInWithEmailAndPassword(auth, email, password);
-    } catch {
-      cred = await createUserWithEmailAndPassword(auth, email, password);
+    } catch (signInErr: any) {
+      const code: string = signInErr?.code ?? "";
+      // Firebase SDK v10 merges 'user-not-found' + 'wrong-password' → 'auth/invalid-credential'
+      if (code === "auth/user-not-found" || code === "auth/invalid-credential") {
+        try {
+          // Try creating the demo account
+          cred = await createUserWithEmailAndPassword(auth, email, password);
+        } catch (createErr: any) {
+          if (createErr?.code === "auth/email-already-in-use") {
+            // Account exists but with a DIFFERENT password (stale Firebase account)
+            throw new Error(
+              `The demo ${role} account (${email}) exists with a different password. ` +
+              `Please delete it from the Firebase Auth console and try again.`
+            );
+          }
+          throw createErr;
+        }
+      } else {
+        throw signInErr;
+      }
     }
 
     await seedDemoProfileIfNeeded(cred.user.uid, role, email);
@@ -250,7 +270,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const protectedData = { ...data };
 
     if (existing && existing.role && data.role && existing.role !== data.role) {
-      const isAdminEmail = ADMIN_EMAILS.includes(user.email || "");
+      const isAdminEmail = ADMIN_EMAILS.includes((user.email || "").toLowerCase());
       // Allow role changes during initial onboarding (e.g., Google login default role -> chosen role in Profile Setup).
       // After profile completion, restrict role changes to admin accounts.
       const canChangeRole = !existing.profileCompleted || isAdminEmail;

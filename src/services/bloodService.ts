@@ -22,10 +22,26 @@ export const createBloodRequest = async (
   form: any,
   clientId: string
 ) => {
+  // Generate a human-readable requestCode like BLV1001
+  let requestCode = "BLV0001";
+  try {
+    const counterRef = doc(db, "counters", "blood_requests");
+    await runTransaction(db, async (tx) => {
+      const counterSnap = await tx.get(counterRef);
+      const currentCount = (counterSnap.exists() ? (counterSnap.data().count || 0) : 0) + 1;
+      tx.set(counterRef, { count: currentCount }, { merge: true });
+      requestCode = `BLV${String(currentCount).padStart(4, "0")}`;
+    });
+  } catch {
+    // Fallback: use timestamp-based code
+    requestCode = `BLV${Date.now().toString().slice(-6)}`;
+  }
+
   const batch = writeBatch(db);
 
   const requestRef = doc(collection(db, "blood_requests"));
   batch.set(requestRef, {
+    requestCode,
     clientId,
     createdBy: profile.uid,
     creatorName: profile.name,

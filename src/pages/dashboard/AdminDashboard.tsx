@@ -222,19 +222,21 @@ export default function AdminDashboard() {
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 bg-muted rounded-xl p-1 mb-6 overflow-x-auto border border-border">
+          <div className="flex gap-2 bg-muted/60 rounded-2xl p-1.5 mb-8 overflow-x-auto border border-border/50 backdrop-blur-sm sticky top-20 z-10 scrollbar-hide">
             {tabs.map((t) => (
               <button
                 key={t.key}
                 onClick={() => setTab(t.key as any)}
-                className={`relative flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg whitespace-nowrap transition-all ${
-                  tab === t.key ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                className={`relative flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl whitespace-nowrap transition-all duration-200 ${
+                  tab === t.key 
+                    ? "bg-card shadow-sm text-foreground border border-border/50 scale-[1.02]" 
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`}
               >
                 <t.icon className="h-4 w-4" />
                 {t.label}
                 {(t as any).badge > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-destructive text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                  <span className="absolute -top-1.5 -right-1.5 bg-destructive text-white text-[10px] font-bold rounded-full w-4.5 h-4.5 flex items-center justify-center">
                     {(t as any).badge}
                   </span>
                 )}

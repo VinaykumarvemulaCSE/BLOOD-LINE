@@ -26,6 +26,7 @@ import { toast } from "sonner";
 
 interface BloodRequest {
   id: string;
+  requestCode?: string;
   bloodGroup: string;
   units: number;
   hospitalLocation: string;
@@ -236,13 +237,15 @@ export default function ReceiverDashboard() {
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 bg-muted rounded-xl p-1 mb-6 border border-border">
+          <div className="flex gap-2 bg-muted/60 rounded-2xl p-1.5 mb-8 overflow-x-auto border border-border/50 backdrop-blur-sm sticky top-20 z-10 scrollbar-hide">
             {tabs.map((t) => (
               <button
                 key={t.key}
                 onClick={() => setTab(t.key as any)}
-                className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-                  tab === t.key ? "bg-card shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"
+                className={`relative flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl whitespace-nowrap transition-all duration-200 ${
+                  tab === t.key
+                    ? "bg-card shadow-sm text-foreground border border-border/50 scale-[1.02]"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 }`}
               >
                 <t.icon className="h-4 w-4" />
@@ -516,7 +519,7 @@ export default function ReceiverDashboard() {
                           ) : (
                             requests.map((r) => (
                               <option key={r.id} value={r.id}>
-                                {r.bloodGroup} • {r.units} units • {r.status}
+                                {r.requestCode ? `${r.requestCode} · ` : ""}{r.bloodGroup} · {r.units} units · {r.status}
                               </option>
                             ))
                           )}
