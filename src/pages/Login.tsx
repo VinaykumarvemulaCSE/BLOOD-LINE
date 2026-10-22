@@ -12,8 +12,8 @@ import SEO from "@/components/SEO";
 
 const DEMO_ROLES: { role: UserRole; label: string; emoji: string }[] = [
   { role: "donor", label: "Donor", emoji: "🩸" },
-  { role: "receiver", label: "Receiver", emoji: "🏥" },
-  { role: "hospital", label: "Hospital", emoji: "🏨" },
+  { role: "receiver", label: "Receiver", emoji: "🙏" },
+  { role: "hospital", label: "Hospital", emoji: "🏥" },
   { role: "admin", label: "Admin", emoji: "⚙️" },
 ];
 

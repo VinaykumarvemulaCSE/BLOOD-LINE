@@ -164,18 +164,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (u) {
-        unsubProfile = onSnapshot(doc(db, "users", u.uid), (snap) => {
-          if (snap.exists()) {
-            const data = snap.data() as Record<string, unknown>;
-            setProfile({ ...data, uid: data?.uid ?? u.uid } as UserProfile);
-          } else {
-            setProfile(null);
-          }
-        });
+        // Keep loading until the first profile snapshot lands, otherwise a hard
+        // refresh bounces a signed-in user to /profile-setup.
+        unsubProfile = onSnapshot(
+          doc(db, "users", u.uid),
+          (snap) => {
+            if (snap.exists()) {
+              const data = snap.data() as Record<string, unknown>;
+              setProfile({ ...data, uid: data?.uid ?? u.uid } as UserProfile);
+            } else {
+              setProfile(null);
+            }
+            setLoading(false);
+          },
+          () => setLoading(false)
+        );
       } else {
         setProfile(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => {
