@@ -203,7 +203,7 @@ export default function HeroSection() {
                 ))}
               </div>
               <p className="text-sm text-muted-foreground">
-                <span className="font-semibold text-foreground">10,000+</span> lives saved and counting
+                <span className="font-semibold text-foreground">4 roles</span> — donors, receivers, hospitals and admins
               </p>
             </motion.div>
           </motion.div>
@@ -237,8 +237,8 @@ export default function HeroSection() {
                     <HeartHandshake className="h-5 w-5 text-success" />
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Lives Saved</p>
-                    <p className="text-base font-bold text-foreground font-display">10,000+</p>
+                    <p className="text-xs text-muted-foreground">Blood Groups</p>
+                    <p className="text-base font-bold text-foreground font-display">8 types</p>
                   </div>
                 </div>
               </motion.div>
@@ -254,8 +254,8 @@ export default function HeroSection() {
                     <Search className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <p className="text-xs text-muted-foreground">Donors Online</p>
-                    <p className="text-base font-bold text-foreground font-display">2,500+</p>
+                    <p className="text-xs text-muted-foreground">Donor Matching</p>
+                    <p className="text-base font-bold text-foreground font-display">Auto-match</p>
                   </div>
                 </div>
               </motion.div>
