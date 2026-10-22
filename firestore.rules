@@ -10,8 +10,9 @@ service cloud.firestore {
       return signedIn() && (
         request.auth.token.email == 'kumarvinay072007@gmail.com' ||
         request.auth.token.email == 'admin@bloodline.app' ||
-        // Demo admin account used by the app for testing.
-        request.auth.token.email == 'test.admin@bloodline.app'
+        // Demo admin accounts used by the app for testing.
+        request.auth.token.email == 'test.admin@bloodline.app' ||
+        request.auth.token.email == 'demo.admin@bloodline.app'
       );
     }
 

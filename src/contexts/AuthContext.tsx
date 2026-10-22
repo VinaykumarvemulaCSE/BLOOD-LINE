@@ -12,7 +12,11 @@ import { auth, db, googleProvider } from "@/lib/firebase";
 
 export type UserRole = "donor" | "receiver" | "hospital" | "admin";
 
-export const ADMIN_EMAILS = ["kumarvinay072007@gmail.com"];
+export const ADMIN_EMAILS = [
+  "kumarvinay072007@gmail.com",
+  // Disposable account for the portfolio demo. Never use a real credential here.
+  "demo.admin@bloodline.app",
+];
 
 export interface UserProfile {
   uid: string;
@@ -58,7 +62,7 @@ export const DEMO_ACCOUNTS: Record<UserRole, { email: string; password: string; 
   donor: { email: "test.donor@bloodline.app", password: "BloodLine@Test2026", name: "Test Donor" },
   receiver: { email: "test.receiver@bloodline.app", password: "BloodLine@Test2026", name: "Test Receiver" },
   hospital: { email: "test.hospital@bloodline.app", password: "BloodLine@Test2026", name: "Test Hospital" },
-  admin: { email: "kumarvinay072007@gmail.com", password: "Vinay@123", name: "Vinay Kumar Vemula" },
+  admin: { email: "demo.admin@bloodline.app", password: "Bloodline@Demo2026", name: "Demo Admin" },
 };
 
 export { DEMO_ACCOUNTS as DEMO_ACCOUNTS_EXPORT };
