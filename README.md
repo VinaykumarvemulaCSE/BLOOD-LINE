@@ -1,77 +1,98 @@
-# 🩸 Blood-Line: Real-Time Blood Donation Platform
+# 🩸 BloodLine
 
-**Blood-Line** is a modern, full-stack, role-based platform designed to bridge the gap between blood donors, receivers, and hospitals in real-time. By streamlining emergency requests, verifying donations, and tracking hospital inventories, Blood-Line saves lives through immediate connectivity and transparency.
+A real-time blood donation platform where a request moves from emergency post to verified donation in one flow.
 
-## 🌟 Key Features
+**Live:** https://blood-line-2007.vercel.app
 
-### 👤 Role-Based Architecture
-The platform intelligently adapts its interface and capabilities based on four distinct user roles:
-- **Donors:** Can view their eligibility status, access active blood requests matching their blood type, and track their donation history/reputation score.
-- **Receivers:** Can create new blood requests, manage their current needs, and trigger an **Emergency SOS** for immediate broadcasts.
-- **Hospitals:** Manage internal blood inventories (stock tracking), verify completed donations for medical compliance, and monitor regional requests.
-- **Admins:** Oversee the entire ecosystem with a comprehensive dashboard displaying total users, active requests, verified donations, and registered hospitals.
+## What it does
 
-### ⚡ Real-Time Emergency SOS
-Receivers can trigger an instant, system-wide SOS alert. This immediately curates an emergency broadcast localized by city, optimizing response times during critical situations.
+**Receivers** post a blood request or fire a one-tap SOS, then watch who accepted and where the request stands.
 
-### 🔒 Secure & Verified Workflows
-To maintain the safety and integrity of the donation pipeline, Blood-Line separates the "donation pledge" from the "verified donation". Donors can mark requests as accepted, but their statistics and 90-day cooldown timers are intelligently updated *only after* a registered Hospital cryptographically signs off on the donation in the system.
+**Donors** see open requests that match their blood group, accept one, and track their eligibility, cooldown and reputation score.
 
----
+**Hospitals** keep per-blood-group inventory, fulfil requests straight from stock, and verify completed donations.
 
-## 📸 Platform Highlights
+**Admins** watch the whole pipeline: users, requests, donations, notification broadcasts and the contact inbox.
 
-### The Donor Dashboard
-*Donors see a clean UI displaying their real-time eligibility status, active requests from compatible receivers, and their community reputation score.*
+## Stack
 
-### The Receiver Dashboard
-*Receivers can initiate structured blood requests specifying blood groups and locations, and track responses in real-time.*
+- **Frontend** — React 18 + TypeScript, built with Vite 5
+- **UI** — Tailwind CSS, shadcn/ui, Framer Motion
+- **Data** — Firebase Authentication (email/password + Google), Cloud Firestore (real-time listeners + transactions)
+- **Routing** — React Router 6
+- **State** — React Context
+- **Icons / toasts** — Lucide, Sonner
 
-### The Hospital Dashboard
-*Hospitals manage exact units of available blood types in their inventory and have the authority to efficiently verify physical donations.*
+## Architecture
 
-### The Admin Analytics
-*Administrators have a bird's-eye view over all platform analytics, workflows, and user management.*
+Four roles — donor, receiver, hospital, admin — share one user profile document with a `role` field, and each gets its own guarded dashboard. Ten collections carry the system: `users`, `blood_requests`, `donations`, `hospitals`, `hospital_inventory`, `notifications`, `messages`, `sos_alerts`, `contact_messages` and `counters`.
 
----
+Requests move through `open → accepted → completed → verified`, with `cancelled` available before completion. Every transition is written inside a Firestore transaction: when two donors tap accept on the same urgent request at once, the second transaction re-reads the document and is rejected instead of silently overwriting the first donor.
 
-## 💻 Tech Stack
+The request code is issued from a `counters` document inside the same transaction that creates the request, so codes stay sequential without collisions.
 
-- **Frontend:** React + Vite, TypeScript 
-- **Styling:** Tailwind CSS, Shadcn UI, Framer Motion (for fluid micro-animations)
-- **Backend & Database:** Firebase Authentication (Email/Password & Google SSO), Cloud Firestore (NoSQL, Real-time Listeners)
-- **Routing:** React Router v6
-- **State Management:** React Context API & TanStack Query
-- **Icons & Tooling:** Lucide React, Sonner (Toasts)
+Eligibility is never donor-reported. A donor can accept a request, but the 90-day cooldown and reputation points are written only on the hospital verification path — a pledge and a verified donation are separate states.
 
----
+Hospitals can fulfil a request from inventory; the units are deducted per blood group in the same transaction that closes the request, so stock cannot drift from the request state.
 
-## 🛠️ Local Development
+Firestore security rules resolve the caller's role from their profile document and enforce it server-side: guests read open requests only, receivers read their own, donors read open, hospitals and admins read all. Role escalation from the client is not possible.
 
-To run this project locally, simply clone the repository and run the following commands in your terminal:
+## Emergency SOS
+
+A receiver in an emergency can broadcast instead of filling a form. The SOS service reads the receiver's city and blood group, finds donors in that city with a compatible group, raises a linked blood request, creates the SOS alert and notifies the matching donors — all inside one transaction that also issues the request code.
+
+## Demo
+
+The login page has one-click demo buttons for all four roles, so the pipeline can be explored without signing up. All demo data is synthetic and disposable.
+
+## Getting started
+
+Prerequisites: Node.js 20+ and a Firebase project with Authentication (email/password + Google) and Firestore enabled.
 
 ```bash
-# Install dependencies
+git clone https://github.com/VinaykumarvemulaCSE/BLOOD-LINE.git
+cd BLOOD-LINE
 npm install
+cp .env.example .env    # Windows: copy .env.example .env
+```
 
-# Start the Vite development server
+Fill the `VITE_FIREBASE_*` values in `.env` from your Firebase project settings — the app reads them at build time in `src/lib/firebase.ts`.
+
+```bash
 npm run dev
 ```
 
-*Note: You will need to set up your own Firebase project and provide your `firebaseConfig` within `src/lib/firebase.ts` to connect to the backend services.*
+Open http://localhost:5173.
 
----
+### Optional: seed demo data
 
-## 🚀 Deployment (Vercel)
+The seed script uses the Admin SDK, so it needs a service account key saved as `serviceAccountKey.json` in the project root (already gitignored).
 
-Deploying Blood-Line to Vercel is seamless since the frontend relies entirely on static hosting and client-side rendering connecting to Firebase.
+```bash
+npm install firebase-admin --save-dev
+npm run db:seed
+```
 
-1. Push your code to your GitHub repository.
-2. Sign in to [Vercel](https://vercel.com/) and click **"Add New Project"**.
-3. Import your GitHub repository.
-4. Vercel will auto-detect the Vite framework. 
-   - **Build Command:** `npm run build`
-   - **Output Directory:** `dist`
-5. Click **Deploy**.
+It is destructive. It deletes every document in `blood_requests`, `donations`, `messages`, `notifications`, `sos_alerts`, `contact_messages` and `counters`, then re-creates the demo accounts, requests across every pipeline state, donations, hospital inventory and notifications. Never run it against data you care about.
 
-Within minutes, your life-saving platform will be live and accessible globally!
+### Deploy Firestore rules
+
+```bash
+firebase deploy --only firestore:rules --project <your-project-id>
+```
+
+## Deployment
+
+The frontend is a static SPA. On Vercel: import the repo, keep the detected Vite settings (`npm run build`, output `dist`), and set the same `VITE_FIREBASE_*` variables in the project's environment settings.
+
+## Known limitations
+
+- Emergency alerts are in-app only; there is no SMS or push channel yet, so a donor has to have the app open or come back to it.
+- Hospital verification is manual — the platform records the decision, it does not verify the donation itself.
+- Demo data is scoped to one city (Hyderabad), so city filtering is easy to demonstrate but not stress-tested.
+- No payments or donor rewards, no automated tests or CI yet.
+- Firestore is initialised with `experimentalForceLongPolling`. Proxies and some corporate networks stall the default streaming channel, which leaves every listener silently empty; long polling costs a little latency and makes the dashboards reliable on those networks.
+
+## License
+
+Academic project. Not licensed for commercial use.
