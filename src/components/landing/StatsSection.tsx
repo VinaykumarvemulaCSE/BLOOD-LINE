@@ -10,7 +10,14 @@ function useFirestoreCount(collectionName: string, filterField?: string, filterV
     // Always use a filter — unfiltered collection reads are blocked for guests by Firestore rules
     if (!filterField || !filterValue) return;
     const q = query(collection(db, collectionName), where(filterField, "==", filterValue));
-    const unsub = onSnapshot(q, (snap) => setCount(snap.size), () => setCount(0));
+    const unsub = onSnapshot(
+      q,
+      (snap) => setCount(snap.size),
+      (err) => {
+        console.warn(`stats listener failed (${collectionName}):`, err.code);
+        setCount(0);
+      }
+    );
     return unsub;
   }, [collectionName, filterField, filterValue]);
   return count;
